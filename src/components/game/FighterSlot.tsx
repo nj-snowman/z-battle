@@ -39,7 +39,11 @@ const TYPE_ACCENT: Record<string, string> = {
 };
 
 function formatStat(n: number): string {
-  return n.toLocaleString();
+  if (n >= 1000) {
+    const v = n / 1000;
+    return v === Math.floor(v) ? `${v.toFixed(0)}k` : `${v.toFixed(1)}k`;
+  }
+  return String(n);
 }
 
 function equipBonuses(ids: string[]): { atk: number; def: number } {
@@ -339,25 +343,35 @@ export default function FighterSlot({
         {isActive && !compact && (
           <div style={{
             display: 'flex',
-            alignItems: 'center',
+            alignItems: 'flex-end',
             justifyContent: 'space-between',
-            padding: '1px 5px 4px',
-            transform: 'none',
+            padding: '2px 5px 4px',
             position: 'relative',
             zIndex: 2,
           }}>
-            <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 10, color: 'var(--hp)', lineHeight: 1.1 }}>
-              {formatStat(fighter.currentHp)}<br/>
-              <span style={{ color: 'var(--muted)', fontSize: 8 }}>/{formatStat(fighter.maxHp)}</span>
-            </span>
-            <div key={displayAtk} className="power-level-flash">
-              <span style={{ fontFamily: 'Bangers, sans-serif', fontSize: 15, color: atkColor, letterSpacing: 0.5 }}>
-                {formatStat(displayAtk)}
+            {/* HP column */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1 }}>
+              <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 7, color: 'var(--muted)', letterSpacing: 0.8, textTransform: 'uppercase', lineHeight: 1 }}>HP</span>
+              <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 12, color: isLowHp ? '#ff4d4d' : 'var(--hp)', lineHeight: 1, textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
+                {formatStat(fighter.currentHp)}<span style={{ color: 'var(--muted)', fontSize: 9 }}>/{formatStat(fighter.maxHp)}</span>
               </span>
             </div>
-            <span style={{ fontFamily: 'Bangers, sans-serif', fontSize: 15, color: defColor, letterSpacing: 0.5 }}>
-              {formatStat(displayDef)}
-            </span>
+            {/* ATK column */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+              <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 7, color: 'var(--muted)', letterSpacing: 0.8, textTransform: 'uppercase', lineHeight: 1 }}>ATK</span>
+              <div key={displayAtk} className="power-level-flash">
+                <span style={{ fontFamily: 'Bangers, sans-serif', fontSize: 17, color: atkColor, letterSpacing: 0.5, textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
+                  {formatStat(displayAtk)}
+                </span>
+              </div>
+            </div>
+            {/* DEF column */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+              <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 7, color: 'var(--muted)', letterSpacing: 0.8, textTransform: 'uppercase', lineHeight: 1 }}>DEF</span>
+              <span style={{ fontFamily: 'Bangers, sans-serif', fontSize: 17, color: defColor, letterSpacing: 0.5, textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
+                {formatStat(displayDef)}
+              </span>
+            </div>
           </div>
         )}
 
