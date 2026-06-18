@@ -772,7 +772,8 @@ function processEndOfTurn(s: GameState): GameState {
     }
   }
 
-  // Discard to hand limit of 7
+  // Discard to hand limit of 7 (copy hand first — shallow-clone of player doesn't deep-clone arrays)
+  player.hand = [...player.hand];
   const newDiscard = [...s.discard];
   while (player.hand.length > 7) {
     const discarded = player.hand.pop()!;

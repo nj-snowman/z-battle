@@ -712,15 +712,15 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
           if (beamTimerRef.current) clearTimeout(beamTimerRef.current);
           beamTimerRef.current = setTimeout(() => {
             setBeamStruggle(null);
-            pendingCardDispatch.current?.();
+            if (stateRef.current.turnPlayer === perspectiveId) pendingCardDispatch.current?.();
             pendingCardDispatch.current = null;
           }, 1500);
         } else {
-          pendingCardDispatch.current?.();
+          if (stateRef.current.turnPlayer === perspectiveId) pendingCardDispatch.current?.();
           pendingCardDispatch.current = null;
         }
       } else {
-        pendingCardDispatch.current?.();
+        if (stateRef.current.turnPlayer === perspectiveId) pendingCardDispatch.current?.();
         pendingCardDispatch.current = null;
       }
 
@@ -2357,7 +2357,8 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
           const idx = zoomedCard.fighterIndex!;
 
           if (state.phase === 'battle' && side === 'active' && f &&
-              !f.summoningSick && !f.hasAttackedThisTurn && !f.statuses.some(s => s.key === 'stun')) {
+              !f.summoningSick && !f.hasAttackedThisTurn && !f.statuses.some(s => s.key === 'stun') &&
+              moves.some(m => m.type === 'attack' && m.attackerIndex === idx)) {
             zoomActions.push({
               label: 'ATTACK',
               variant: 'primary',
