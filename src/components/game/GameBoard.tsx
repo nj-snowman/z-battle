@@ -653,8 +653,8 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     setItemAnimPhase('show');
     itemAnimTimerRef.current = setTimeout(() => {
       setItemAnimPhase('exit');
-      // Guard: only dispatch if it's still our turn (auto-end-turn may have already switched the turn)
-      if (stateRef.current.turnPlayer === perspectiveId) pendingCardDispatch.current?.();
+      // For enemy plays always dispatch; for own plays guard against stale turn (auto-end-turn race)
+      if (isEnemyPlay || stateRef.current.turnPlayer === perspectiveId) pendingCardDispatch.current?.();
       pendingCardDispatch.current = null;
       itemAnimTimerRef.current = setTimeout(() => {
         setItemPlayAnim(null);
