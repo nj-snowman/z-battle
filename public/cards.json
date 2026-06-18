@@ -144,35 +144,35 @@
       "name": "The Z-Fighters",
       "type": "earthling",
       "ultimate": "goku",
-      "heroes": ["earthling_fighter", "krillin", "chiaotzu", "tien", "goku"],
+      "heroes": ["earthling_fighter", "martial_artist", "young_trainee", "krillin", "yamcha", "chiaotzu", "master_roshi", "tien", "gohan", "goku"],
       "items": ["senzu_bean", "power_pole", "weighted_clothing", "scouter", "flying_nimbus", "capsule_corp_kit", "kamehameha", "fusion", "world_tournament_arena", "kame_house"]
     },
     "saiyan": {
       "name": "Pride of the Warrior Race",
       "type": "saiyan",
       "ultimate": "vegeta",
-      "heroes": ["saiyan_recruit", "raditz", "bardock", "trunks_super_saiyan", "vegeta"],
+      "heroes": ["saiyan_recruit", "saiyan_trooper", "saiyan_brawler", "raditz", "nappa", "bardock", "future_trunks", "trunks_super_saiyan", "broly", "vegeta"],
       "items": ["senzu_bean", "saiyan_armor", "galick_gun", "scouter", "power_pole", "zenkai_boost", "great_ape", "super_saiyan", "hyperbolic_time_chamber", "king_kais_planet"]
     },
     "android": {
       "name": "Engineered for War",
       "type": "android",
       "ultimate": "cell",
-      "heroes": ["saibaman", "dr_gero_20", "android_18", "android_16", "cell"],
+      "heroes": ["saibaman", "saibaman", "android_19", "dr_gero_20", "android_17", "android_18", "super_android_13", "android_16", "semi_perfect_cell", "cell"],
       "items": ["repair_kit", "reinforced_plating", "energy_absorption", "targeting_scope", "photon_blast", "barrier_field", "self_destruct_device", "power_core", "cell_games_arena", "dr_geros_lab"]
     },
     "namekian": {
       "name": "Warriors of the Dragon Clan",
       "type": "namekian",
       "ultimate": "piccolo",
-      "heroes": ["dragon_clan_namekian", "dende", "nail", "kami", "piccolo"],
+      "heroes": ["dragon_clan_namekian", "namekian_child", "namekian_warrior", "dende", "lord_slug", "nail", "king_piccolo", "kami", "giant_namekian", "piccolo"],
       "items": ["senzu_bean", "demon_cloak", "makankosappo", "namekian_insight", "regeneration_item", "dragon_clan_ritual", "fusion_namekian", "power_pole", "planet_namek", "gurus_house"]
     },
     "frieza_force": {
       "name": "The Cold Empire",
       "type": "frieza_force",
       "ultimate": "frieza",
-      "heroes": ["frieza_soldier", "dodoria", "recoome", "king_cold", "frieza"],
+      "heroes": ["frieza_soldier", "cui", "appule", "dodoria", "zarbon", "recoome", "captain_ginyu", "king_cold", "cooler", "frieza"],
       "items": ["medical_machine", "battle_armor", "scouter", "death_beam", "death_saucer", "telekinesis", "tyrants_command", "final_form", "friezas_spaceship", "capital_of_the_cold_empire"]
     }
   }
