@@ -3,7 +3,7 @@
 import React from 'react';
 
 interface PileDisplayProps {
-  piles: { hero: string[]; item: string[]; field: string[] };
+  piles: { hero: string[]; item: string[] };
 }
 
 function PileStack({
@@ -65,7 +65,6 @@ export default function PileDisplay({ piles }: PileDisplayProps) {
     <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
       <PileStack label="Hero" count={piles.hero.length} color="var(--panel2)" />
       <PileStack label="Item" count={piles.item.length} color="#1a2a1a" />
-      <PileStack label="Field" count={piles.field.length} color="#1a2010" />
     </div>
   );
 }

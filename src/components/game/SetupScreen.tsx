@@ -32,7 +32,7 @@ const DECK_OPTIONS = [
 function getDeckImages(deckId: string): string[] {
   const deck = DECKS[deckId];
   if (!deck) return [];
-  return [...deck.heroes, ...deck.items, ...deck.fields].flatMap(id => {
+  return [...deck.heroes, ...deck.items].flatMap(id => {
     try {
       const card = getCard(id);
       return card.image ? [`/${card.image}`] : [];

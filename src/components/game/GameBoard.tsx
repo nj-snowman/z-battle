@@ -170,7 +170,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
   const [multiDrawSelect, setMultiDrawSelect] = useState<{
     cardId: string;
     totalDraws: number;
-    picks: Array<'hero' | 'item' | 'field'>;
+    picks: Array<'hero' | 'item'>;
   } | null>(null);
 
   // PTCGP effect state
@@ -523,7 +523,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
   // Auto-advance draw phase when all piles are exhausted
   useEffect(() => {
     if (!isMyTurn || state.phase !== 'draw') return;
-    const allEmpty = (['hero', 'item', 'field'] as const).every(p => myPlayer.piles[p].length === 0);
+    const allEmpty = (['hero', 'item'] as const).every(p => myPlayer.piles[p].length === 0);
     if (!allEmpty) return;
     const isFirstPlayerTurn1 =
       state.players[tp].turnNumber === 1 && tp === state.firstPlayer;
@@ -840,7 +840,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
   }
 
   // ---- Draw piles ----
-  function handleDrawPile(pile: 'hero' | 'item' | 'field') {
+  function handleDrawPile(pile: 'hero' | 'item') {
     if (!isMyTurn && perspective !== undefined) return;
     if (state.phase !== 'draw') return;
     safeIntent({ type: 'draw', pile });
@@ -1526,13 +1526,12 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
               Draw one
             </div>
             <div style={{ display: 'flex', gap: 22, alignItems: 'flex-end' }}>
-              {(['hero', 'item', 'field'] as const).map((pile) => {
+              {(['hero', 'item'] as const).map((pile) => {
                 const count = myPlayer.piles[pile].length;
                 const hasMove = moves.some(m => m.type === 'draw' && m.pile === pile);
                 const PILE_COLORS: Record<string, { bg: string; border: string; label: string; glow: string }> = {
                   hero:  { bg: '#111128', border: '#353880', label: '#8090ff', glow: 'rgba(80,100,255,0.45)' },
                   item:  { bg: '#0e1e0e', border: '#285028', label: '#40b840', glow: 'rgba(40,180,40,0.45)' },
-                  field: { bg: '#1e1408', border: '#6a5020', label: '#d09840', glow: 'rgba(200,150,50,0.45)' },
                 };
                 const c = PILE_COLORS[pile];
                 return (
@@ -2439,7 +2438,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
               Also reveals opponent's hand
             </div>
             <div style={{ display: 'flex', gap: 8, width: '100%' }}>
-              {(['hero', 'item', 'field'] as const).map(pile => {
+              {(['hero', 'item'] as const).map(pile => {
                 const count = myPlayer.piles[pile].length;
                 const disabled = count === 0;
                 return (
@@ -2662,7 +2661,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
               {multiDrawSelect.totalDraws - multiDrawSelect.picks.length} draw{multiDrawSelect.totalDraws - multiDrawSelect.picks.length !== 1 ? 's' : ''} remaining
             </div>
             <div style={{ display: 'flex', gap: 8, width: '100%' }}>
-              {(['hero', 'item', 'field'] as const).map(pile => {
+              {(['hero', 'item'] as const).map(pile => {
                 const count = myPlayer.piles[pile].length;
                 const disabled = count === 0;
                 return (

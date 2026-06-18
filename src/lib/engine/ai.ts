@@ -54,16 +54,16 @@ export function chooseMove(state: GameState, player: PlayerId): Intent | null {
         if (m) return m;
       }
 
-      // Active slots are all filled — prefer item or field over more heroes
+      // Active slots are all filled — prefer item over more heroes
       if (emptyActives === 0) {
-        for (const pile of ['item', 'field', 'hero'] as const) {
+        for (const pile of ['item', 'hero'] as const) {
           const m = moves.find(m => m.type === 'draw' && m.pile === pile);
           if (m) return m;
         }
       }
 
       // Default: draw hero to keep board filled
-      for (const pile of ['hero', 'item', 'field'] as const) {
+      for (const pile of ['hero', 'item'] as const) {
         const m = moves.find(m => m.type === 'draw' && m.pile === pile);
         if (m) return m;
       }

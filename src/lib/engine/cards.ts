@@ -14,7 +14,7 @@ export function getCard(id: string): CardDef {
 
 export const DECKS = (cardsData as any).decks as Record<string, {
   name: string; type: string; ultimate: string;
-  heroes: string[]; items: string[]; fields: string[];
+  heroes: string[]; items: string[];
 }>;
 
 export const CONSTANTS = (cardsData as any).meta.constants;

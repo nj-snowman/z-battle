@@ -27,7 +27,7 @@ function getPreloadWidths(): number[] {
 function getDeckImages(deckId: string): string[] {
   const deck = DECKS[deckId];
   if (!deck) return [];
-  const allIds = [...(deck.heroes ?? []), ...(deck.items ?? []), ...(deck.fields ?? [])];
+  const allIds = [...(deck.heroes ?? []), ...(deck.items ?? [])];
   const seen = new Set<string>();
   const images: string[] = [];
   for (const id of allIds) {

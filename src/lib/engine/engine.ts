@@ -466,8 +466,8 @@ function applyItemAbility(
   ab: any,
   targetSide?: SlotType,
   targetIndex?: number,
-  pileChoice?: 'hero' | 'item' | 'field',
-  drawChoices?: Array<'hero' | 'item' | 'field'>,
+  pileChoice?: 'hero' | 'item',
+  drawChoices?: Array<'hero' | 'item'>,
   enemyTargetIndex?: number,
   promotionIndex?: number,
   discardIndex?: number
@@ -579,7 +579,7 @@ function applyItemAbility(
         }
       } else {
         let drawn = 0;
-        for (const pile of ['hero', 'item', 'field'] as const) {
+        for (const pile of ['hero', 'item'] as const) {
           if (drawn >= p.draw) break;
           while (drawn < p.draw && newPiles[pile].length > 0) {
             const [drawnCard, ...rest] = newPiles[pile];
@@ -597,9 +597,9 @@ function applyItemAbility(
     case 'reveal_and_draw': {
       // Scouter/Namekian Insight/Targeting Scope: reveal opponent hand, draw 1
       const player = { ...s.players[tp] };
-      const pileOrder: Array<'hero' | 'item' | 'field'> = pileChoice
-        ? [pileChoice, ...(['hero', 'item', 'field'] as const).filter(p => p !== pileChoice)]
-        : ['hero', 'item', 'field'];
+      const pileOrder: Array<'hero' | 'item'> = pileChoice
+        ? [pileChoice, ...(['hero', 'item'] as const).filter(p => p !== pileChoice)]
+        : ['hero', 'item'];
       for (const pile of pileOrder) {
         if (player.piles[pile].length > 0) {
           const [card, ...rest] = player.piles[pile];

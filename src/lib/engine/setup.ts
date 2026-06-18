@@ -17,18 +17,17 @@ function hasOneCostOneHero(hand: string[]): boolean {
   });
 }
 
-function makePiles(deckId: string): { hero: string[]; item: string[]; field: string[] } {
+function makePiles(deckId: string): { hero: string[]; item: string[] } {
   const deck = DECKS[deckId];
   return {
     hero: shuffle([...deck.heroes]),
     item: shuffle([...deck.items]),
-    field: shuffle([...deck.fields]),
   };
 }
 
-function dealOpeningHand(piles: { hero: string[]; item: string[]; field: string[] }): {
+function dealOpeningHand(piles: { hero: string[]; item: string[] }): {
   hand: string[];
-  piles: { hero: string[]; item: string[]; field: string[] };
+  piles: { hero: string[]; item: string[] };
 } {
   let hand: string[];
   let heroPile = [...piles.hero];
@@ -56,7 +55,7 @@ export function createInitialState(
   const makePlayerState = (
     deckId: string,
     hand: string[],
-    piles: typeof p1FinalPiles,
+    piles: { hero: string[]; item: string[] },
     userId?: string
   ): PlayerState => ({
     userId,

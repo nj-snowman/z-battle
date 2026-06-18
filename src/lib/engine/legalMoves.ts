@@ -13,7 +13,7 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
 
   switch (state.phase) {
     case 'draw': {
-      for (const pile of ['hero', 'item', 'field'] as const) {
+      for (const pile of ['hero', 'item'] as const) {
         if (ps.piles[pile].length > 0) {
           moves.push({ type: 'draw', pile });
         }
