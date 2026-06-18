@@ -351,24 +351,24 @@ export default function FighterSlot({
           }}>
             {/* HP column */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1 }}>
-              <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 7, color: 'var(--muted)', letterSpacing: 0.8, textTransform: 'uppercase', lineHeight: 1 }}>HP</span>
-              <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 12, color: isLowHp ? '#ff4d4d' : 'var(--hp)', lineHeight: 1, textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
-                {formatStat(fighter.currentHp)}<span style={{ color: 'var(--muted)', fontSize: 9 }}>/{formatStat(fighter.maxHp)}</span>
+              <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 9, color: 'var(--muted)', letterSpacing: 0.8, textTransform: 'uppercase', lineHeight: 1 }}>HP</span>
+              <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 14, color: isLowHp ? '#ff4d4d' : 'var(--hp)', lineHeight: 1, textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
+                {formatStat(fighter.currentHp)}<span style={{ color: 'var(--muted)', fontSize: 10 }}>/{formatStat(fighter.maxHp)}</span>
               </span>
             </div>
             {/* ATK column */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-              <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 7, color: 'var(--muted)', letterSpacing: 0.8, textTransform: 'uppercase', lineHeight: 1 }}>ATK</span>
+              <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 9, color: 'var(--muted)', letterSpacing: 0.8, textTransform: 'uppercase', lineHeight: 1 }}>ATK</span>
               <div key={displayAtk} className="power-level-flash">
-                <span style={{ fontFamily: 'Bangers, sans-serif', fontSize: 17, color: atkColor, letterSpacing: 0.5, textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
+                <span style={{ fontFamily: 'Bangers, sans-serif', fontSize: 19, color: atkColor, letterSpacing: 0.5, textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
                   {formatStat(displayAtk)}
                 </span>
               </div>
             </div>
             {/* DEF column */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
-              <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 7, color: 'var(--muted)', letterSpacing: 0.8, textTransform: 'uppercase', lineHeight: 1 }}>DEF</span>
-              <span style={{ fontFamily: 'Bangers, sans-serif', fontSize: 17, color: defColor, letterSpacing: 0.5, textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
+              <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 9, color: 'var(--muted)', letterSpacing: 0.8, textTransform: 'uppercase', lineHeight: 1 }}>DEF</span>
+              <span style={{ fontFamily: 'Bangers, sans-serif', fontSize: 19, color: defColor, letterSpacing: 0.5, textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
                 {formatStat(displayDef)}
               </span>
             </div>

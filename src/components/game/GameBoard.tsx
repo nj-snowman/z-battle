@@ -1636,8 +1636,8 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
             filter,
           }}>
             <div style={{
-              width: 150,
-              height: 210,
+              width: 200,
+              height: 280,
               borderRadius: 10,
               overflow: 'hidden',
               position: 'relative',
@@ -1648,7 +1648,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
                 fill
                 src={`/${card.image}`}
                 alt=""
-                sizes="86px"
+                sizes="200px"
                 loading="eager"
                 style={{ objectFit: 'cover' }}
               />

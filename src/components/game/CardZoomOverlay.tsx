@@ -74,8 +74,8 @@ export default function CardZoomOverlay({ cardId, fighter, onClose, actions = []
               src={`/${card.image}`}
               alt={name}
               style={{
-                maxHeight: 'min(52dvh, 340px)',
-                maxWidth: 'min(80vw, 260px)',
+                maxHeight: 'min(62dvh, 420px)',
+                maxWidth: 'min(90vw, 340px)',
                 borderRadius: 10,
                 objectFit: 'contain',
                 display: 'block',
