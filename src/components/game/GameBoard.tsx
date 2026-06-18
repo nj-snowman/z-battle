@@ -557,6 +557,18 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     if (freeMoves.length > 0) return;
     // Don't auto-end while waiting for the player to choose a bench replacement
     if (state.pendingPromotions.some(p => p.side === perspectiveId)) return;
+    // In main1, if a fighter can attack for free (e.g. Android #17, 0-Ki cost) advance to
+    // battle instead of ending the turn so the player gets to use those attacks.
+    if (state.phase === 'main1' && moves.some(m => m.type === 'advance_phase')) {
+      const hasFreeAttacker = myPlayer.actives.some((f, i) => {
+        if (!f || f.summoningSick || f.hasAttackedThisTurn || f.statuses.some(s => s.key === 'stun')) return false;
+        return getEffectiveStats(f, 'active', i, perspectiveId, state).attackKiCost === 0;
+      });
+      if (hasFreeAttacker) {
+        onIntent({ type: 'advance_phase' });
+        return;
+      }
+    }
     setNarration('OUT OF KI!');
     const t = setTimeout(() => {
       setNarration(null);
