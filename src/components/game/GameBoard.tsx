@@ -504,6 +504,20 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     onIntent({ type: 'advance_phase' });
   }, [state, isMyTurn]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-end turn when Ki hits 0 and no free moves remain
+  useEffect(() => {
+    if (!isMyTurn) return;
+    if (state.phase !== 'main1' && state.phase !== 'main2' && state.phase !== 'battle') return;
+    if (myPlayer.kiCurrent > 0) return;
+    // Still allow play if there are affordable (0-Ki) non-trivial moves — e.g. 0-Ki cards or
+    // Android #17's free attacks. Sacrifice is intentionally excluded so it doesn't block the skip.
+    const freeMoves = moves.filter(m =>
+      m.type !== 'advance_phase' && m.type !== 'end_turn' && m.type !== 'sacrifice'
+    );
+    if (freeMoves.length > 0) return;
+    onIntent({ type: 'end_turn' });
+  }, [state, isMyTurn]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ---- Item / field card play animation ----
   function flushPendingCardDispatch() {
     if (pendingCardDispatch.current) {
