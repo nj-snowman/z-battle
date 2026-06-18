@@ -542,6 +542,8 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
       m.type !== 'advance_phase' && m.type !== 'end_turn' && m.type !== 'sacrifice'
     );
     if (freeMoves.length > 0) return;
+    // Don't auto-end while waiting for the player to choose a bench replacement
+    if (state.pendingPromotions.some(p => p.side === perspectiveId)) return;
     setNarration('OUT OF KI!');
     const t = setTimeout(() => {
       setNarration(null);

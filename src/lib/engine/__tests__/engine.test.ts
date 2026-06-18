@@ -11,7 +11,7 @@ function makeEmptyPlayer(deckId: string): PlayerState {
     kiCurrent: 1,
     koScoredAgainst: 0,
     hand: [],
-    piles: { hero: [], item: [], field: [] },
+    piles: { hero: [], item: [] },
     actives: [null, null],
     bench: [null, null],
     retreatUsedThisTurn: false,
@@ -34,6 +34,8 @@ function makeState(overrides?: Partial<GameState>): GameState {
     },
     winner: null,
     log: [],
+    firstAttackDone: false,
+    pendingPromotions: [],
   };
   return { ...base, ...overrides };
 }
