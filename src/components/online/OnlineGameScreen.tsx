@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { User } from '@supabase/supabase-js';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/client';
 import type { Match } from '@/lib/supabase/types';
 import type { GameState, Intent, PlayerId } from '@/lib/engine/types';
@@ -20,6 +21,9 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [matchData, setMatchData] = useState<Match | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pendingEnemyAttack, setPendingEnemyAttack] = useState<Intent | null>(null);
+  const [pendingEnemyPlay, setPendingEnemyPlay] = useState<Intent | null>(null);
+  const channelRef = useRef<RealtimeChannel | null>(null);
 
   // Load initial state
   useEffect(() => {
@@ -48,14 +52,39 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
           }
         }
       })
+      .on('broadcast', { event: 'intent' }, ({ payload }) => {
+        // Show animation for opponent's plays/attacks
+        if (payload.by === myRole) return;
+        const intent = payload.intent as Intent;
+        if (intent.type === 'attack') {
+          setPendingEnemyAttack(intent);
+        } else if (intent.type === 'play_item' || intent.type === 'play_field') {
+          setPendingEnemyPlay(intent);
+        }
+      })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
-  }, [matchId, onGameEnd]);
+    channelRef.current = channel;
+    return () => { supabase.removeChannel(channel); channelRef.current = null; };
+  }, [matchId, myRole, onGameEnd]);
 
   const handleIntent = useCallback(async (intent: Intent) => {
     if (!gameState || !matchData) return;
-    if (gameState.turnPlayer !== myRole) return;
+
+    // promote_from_bench is dispatched by the defending player (not the turn player)
+    if (intent.type === 'promote_from_bench') {
+      const pending = gameState.pendingPromotions[0];
+      if (!pending || pending.side !== myRole) return;
+    } else if (gameState.turnPlayer !== myRole) {
+      return;
+    }
+
+    // Broadcast intent to opponent so they can play the animation
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'intent',
+      payload: { intent, by: myRole },
+    });
 
     const newState = applyIntent(gameState, intent);
     setGameState(newState);
@@ -105,6 +134,10 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
       onIntent={handleIntent}
       onTurnEnd={() => {}}
       perspective={myRole}
+      pendingEnemyAttack={pendingEnemyAttack}
+      onEnemyAttackDone={() => setPendingEnemyAttack(null)}
+      pendingEnemyPlay={pendingEnemyPlay}
+      onEnemyPlayDone={() => setPendingEnemyPlay(null)}
     />
   );
 }

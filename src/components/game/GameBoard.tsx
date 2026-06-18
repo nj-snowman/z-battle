@@ -286,7 +286,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
 
   // Compact mode for narrow screens
   useEffect(() => {
-    function check() { setIsCompact(window.innerWidth < 400); }
+    function check() { setIsCompact(window.innerWidth < 360); }
     check();
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
@@ -842,7 +842,17 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     isOpponent: boolean
   ) {
     if (cardAnimLock.current) return;
-    if (!isMyTurn && perspective !== undefined) return;
+    if (!isMyTurn && perspective !== undefined) {
+      // Not our turn — only allow card zoom, no game actions
+      if (!isOpponent) {
+        const fighter = side === 'active' ? myPlayer.actives[index] : myPlayer.bench[index];
+        if (fighter) setZoomedCard({ cardId: fighter.cardId, fighter, fighterSide: side, fighterIndex: index, isOpponentFighter: false });
+      } else {
+        const oppFighter = side === 'active' ? oppPlayer.actives[index] : oppPlayer.bench[index];
+        if (oppFighter) setZoomedCard({ cardId: oppFighter.cardId, fighter: oppFighter, isOpponentFighter: true });
+      }
+      return;
+    }
     if (selection.mode === 'chiaotzu_stun_select' && isOpponent && side === 'active') {
       safeIntent({
         type: 'play_hero',
