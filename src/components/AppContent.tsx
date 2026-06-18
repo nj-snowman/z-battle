@@ -153,7 +153,7 @@ export default function AppContent() {
     let newState = applyIntent(gs, intent);
 
     if (aiPlayer) {
-      while (newState.pendingPromotions.length > 0 && newState.pendingPromotions[0].side === aiPlayer) {
+      while (!newState.winner && newState.pendingPromotions.length > 0 && newState.pendingPromotions[0].side === aiPlayer) {
         const bench = newState.players[aiPlayer].bench;
         const benchIdx = bench.findIndex(f => f !== null);
         if (benchIdx === -1) break;
