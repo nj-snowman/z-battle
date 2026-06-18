@@ -168,7 +168,7 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
 
       // Process item abilities
       for (const ab of card.abilities) {
-        s = applyItemAbility(s, tp, opponent, card.id, ab, intent.targetSide, intent.targetIndex, intent.pileChoice, intent.drawChoices, intent.enemyTargetIndex, intent.promotionIndex);
+        s = applyItemAbility(s, tp, opponent, card.id, ab, intent.targetSide, intent.targetIndex, intent.pileChoice, intent.drawChoices, intent.enemyTargetIndex, intent.promotionIndex, intent.discardIndex);
       }
 
       // Consumables go to discard (unless already discarded by the ability)
@@ -469,7 +469,8 @@ function applyItemAbility(
   pileChoice?: 'hero' | 'item' | 'field',
   drawChoices?: Array<'hero' | 'item' | 'field'>,
   enemyTargetIndex?: number,
-  promotionIndex?: number
+  promotionIndex?: number,
+  discardIndex?: number
 ): GameState {
   const p = ab.params as any;
   switch (ab.kind) {
@@ -633,13 +634,13 @@ function applyItemAbility(
       break;
     }
     case 'recur_from_discard': {
-      // Dragon Clan Ritual: return KO'd Namekian from discard to hand
+      // Dragon Clan Ritual: return chosen KO'd Namekian from discard to hand
       const player = { ...s.players[tp] };
-      const discardIdx = s.discard.findIndex(id => {
+      const discardIdx = discardIndex ?? s.discard.findIndex(id => {
         const c = getCard(id);
         return c.cardType === 'hero' && c.fighterType === p.type;
       });
-      if (discardIdx !== -1) {
+      if (discardIdx !== -1 && discardIdx < s.discard.length) {
         const returned = s.discard[discardIdx];
         const newDiscard = s.discard.filter((_, i) => i !== discardIdx);
         player.hand = [...player.hand, returned];

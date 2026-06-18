@@ -92,7 +92,7 @@ export interface CardDef {
 export type Intent =
   | { type: 'draw'; pile: DrawPile }
   | { type: 'play_hero'; cardId: string; slot: SlotType; index: number; stunTargetIndex?: number }
-  | { type: 'play_item'; cardId: string; targetSide?: SlotType; targetIndex?: number; enemyTargetIndex?: number; promotionIndex?: number; pileChoice?: 'hero' | 'item' | 'field'; drawChoices?: Array<'hero' | 'item' | 'field'> }
+  | { type: 'play_item'; cardId: string; targetSide?: SlotType; targetIndex?: number; enemyTargetIndex?: number; promotionIndex?: number; pileChoice?: 'hero' | 'item' | 'field'; drawChoices?: Array<'hero' | 'item' | 'field'>; discardIndex?: number }
   | { type: 'play_field'; cardId: string }
   | { type: 'retreat'; activeIndex: number; benchIndex: number }
   | { type: 'attack'; attackerIndex: number; targetIndex: number; useKaioken?: boolean; useOneShotAbility?: boolean; useTriBeam?: boolean }

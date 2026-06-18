@@ -164,6 +164,8 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
   // Scouter: pile choice + opponent hand reveal
   const [pileSelectForCard, setPileSelectForCard] = useState<string | null>(null);
   const [revealedOppHand, setRevealedOppHand] = useState<string[] | null>(null);
+  // Dragon Clan Ritual: discard card choice
+  const [discardSelectForCard, setDiscardSelectForCard] = useState<string | null>(null);
   // Capsule Corp: multi-draw pile selection
   const [multiDrawSelect, setMultiDrawSelect] = useState<{
     cardId: string;
@@ -391,7 +393,17 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
       }
     }
     if (intent.type === 'play_hero') { startHeroPlayAnim(intent, dispatch); return; }
-    if (intent.type === 'play_item') { startItemPlayAnim(intent, dispatch); return; }
+    if (intent.type === 'play_item') {
+      // Intercept recur_from_discard plays — show picker if no choice made yet
+      if (intent.discardIndex === undefined) {
+        const c = (() => { try { return getCard(intent.cardId); } catch { return null; } })();
+        if (c?.abilities[0]?.kind === 'recur_from_discard') {
+          setDiscardSelectForCard(intent.cardId);
+          return;
+        }
+      }
+      startItemPlayAnim(intent, dispatch); return;
+    }
     if (intent.type === 'play_field') { startItemPlayAnim(intent, dispatch); return; }
     if (intent.type === 'ultimate') {
       const fighter = myPlayer.actives[intent.fighterIndex];
@@ -2462,6 +2474,86 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
           </div>
         </div>
       )}
+
+      {/* Discard picker (Dragon Clan Ritual) */}
+      {discardSelectForCard && (() => {
+        const ritualCard = (() => { try { return getCard(discardSelectForCard); } catch { return null; } })();
+        const targetType = (ritualCard?.abilities[0]?.params as any)?.type as string | undefined;
+        const eligible = state.discard
+          .map((id, i) => ({ id, i }))
+          .filter(({ id }) => {
+            const c = (() => { try { return getCard(id); } catch { return null; } })();
+            return c?.cardType === 'hero' && c.fighterType === targetType;
+          });
+        return (
+          <div
+            onClick={() => setDiscardSelectForCard(null)}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 500,
+              background: 'rgba(0,0,0,0.88)',
+              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              className="sheet-rise"
+              style={{
+                width: '100%', maxWidth: 430,
+                background: 'var(--panel)', borderRadius: '16px 16px 0 0',
+                padding: 'max(20px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom))',
+                display: 'flex', flexDirection: 'column', gap: 12,
+              }}
+            >
+              <div style={{ fontFamily: 'Bangers, sans-serif', fontSize: 17, color: 'var(--ki)', letterSpacing: 2, textTransform: 'uppercase', textAlign: 'center' }}>
+                Return which fighter?
+              </div>
+              <div style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, textAlign: 'center' }}>
+                Choose a KO'd {targetType ?? 'fighter'} to return to your hand
+              </div>
+              {eligible.map(({ id, i }) => {
+                const c = (() => { try { return getCard(id); } catch { return null; } })();
+                return (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      safeIntent({ type: 'play_item', cardId: discardSelectForCard, discardIndex: i });
+                      setDiscardSelectForCard(null);
+                    }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '10px 14px', borderRadius: 10,
+                      border: '1.5px solid var(--ki)',
+                      background: 'rgba(255,122,24,0.08)',
+                      cursor: 'pointer', textAlign: 'left',
+                    }}
+                  >
+                    {c?.image && (
+                      <img src={`/${c.image}`} alt={c.name ?? id} style={{ width: 40, height: 56, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }} />
+                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span style={{ fontFamily: 'Bangers, sans-serif', fontSize: 15, color: 'var(--ink)', letterSpacing: 1 }}>{c?.name ?? id}</span>
+                      <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        {c?.kiCost ?? 0} Ki · {c?.hp?.toLocaleString() ?? '?'} HP · ATK {c?.atk?.toLocaleString() ?? '?'}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+              <button
+                onClick={() => setDiscardSelectForCard(null)}
+                style={{
+                  padding: '8px 24px', borderRadius: 8,
+                  border: '1px solid var(--line)', background: 'transparent',
+                  color: 'var(--muted)', fontFamily: 'Saira Condensed, sans-serif',
+                  fontSize: 12, letterSpacing: 1, textTransform: 'uppercase', cursor: 'pointer',
+                }}
+              >
+                CANCEL
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Revealed opponent hand overlay */}
       {revealedOppHand && (

@@ -75,12 +75,12 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
             moves.push({ type: 'play_item', cardId });
           } else if (abKind === 'recur_from_discard') {
             const type = (card.abilities[0].params as any).type;
-            if (state.discard.some(id => {
+            state.discard.forEach((id, discardIndex) => {
               const c = getCard(id);
-              return c.cardType === 'hero' && c.fighterType === type;
-            })) {
-              moves.push({ type: 'play_item', cardId });
-            }
+              if (c.cardType === 'hero' && c.fighterType === type) {
+                moves.push({ type: 'play_item', cardId, discardIndex });
+              }
+            });
           } else if (abKind === 'sacrifice_for_damage') {
             // Self-Destruct Device: pick a friendly Android + an enemy active to damage
             const enemyTargets = oppState.actives

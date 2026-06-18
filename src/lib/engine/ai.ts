@@ -194,7 +194,18 @@ export function chooseMove(state: GameState, player: PlayerId): Intent | null {
         const kind = getCard(m.cardId).abilities[0]?.kind;
         return kind === 'draw' || kind === 'reveal_and_draw' || kind === 'recur_from_discard';
       });
-      if (utilItems.length > 0) return utilItems[0];
+      if (utilItems.length > 0) {
+        // For recur_from_discard, pick the highest-Ki-cost (most powerful) Namekian
+        const recurMoves = utilItems.filter(m => getCard(m.cardId).abilities[0]?.kind === 'recur_from_discard');
+        if (recurMoves.length > 0) {
+          return recurMoves.reduce((best, m) => {
+            const bestCard = m.discardIndex !== undefined ? getCard(state.discard[m.discardIndex]) : null;
+            const curCard = best.discardIndex !== undefined ? getCard(state.discard[best.discardIndex]) : null;
+            return (bestCard?.kiCost ?? 0) > (curCard?.kiCost ?? 0) ? m : best;
+          });
+        }
+        return utilItems[0];
+      }
 
       // Fill bench with strongest hero
       if (benchHeroes.length > 0) {
