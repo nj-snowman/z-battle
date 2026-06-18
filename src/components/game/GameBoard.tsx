@@ -354,7 +354,8 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
               dmgUpdates.set(k, { amount: f.maxHp - f.currentHp, seq: ++dmgSeqRef.current });
               newShake.add(k);
             }
-          } else if (snap.occupied[k]) {
+          } else if (snap.occupied[k] && side === 'active') {
+            // Only active slots trigger KO flash — bench disappearing is promotion/sacrifice, not a KO
             newKo.add(k);
           }
         });
@@ -555,8 +556,8 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
       m.type !== 'advance_phase' && m.type !== 'end_turn' && m.type !== 'sacrifice'
     );
     if (freeMoves.length > 0) return;
-    // Don't auto-end while waiting for the player to choose a bench replacement
-    if (state.pendingPromotions.some(p => p.side === perspectiveId)) return;
+    // Don't auto-end while any bench promotion is pending (own side or opponent's)
+    if (state.pendingPromotions.length > 0) return;
     // In main1, if a fighter can attack for free (e.g. Android #17, 0-Ki cost) advance to
     // battle instead of ending the turn so the player gets to use those attacks.
     if (state.phase === 'main1' && moves.some(m => m.type === 'advance_phase')) {
@@ -2213,9 +2214,10 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
                     setHeldCardOrigIdx(origIdx);
                   }, 400);
 
+                  // Capture pointer so onPointerUp fires reliably even for non-dragging players
+                  e.currentTarget.setPointerCapture(e.pointerId);
                   if (!canDrag) return;
                   e.preventDefault();
-                  e.currentTarget.setPointerCapture(e.pointerId);
                   const info: DragInfo = {
                     cardId, handIdx: origIdx,
                     startX: e.clientX, startY: e.clientY,

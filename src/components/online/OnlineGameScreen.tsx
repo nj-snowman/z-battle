@@ -77,6 +77,9 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
       if (!pending || pending.side !== myRole) return;
     } else if (gameState.turnPlayer !== myRole) {
       return;
+    } else if (gameState.pendingPromotions.some(p => p.side !== myRole)) {
+      // Attacker must wait — opponent is still choosing their bench replacement
+      return;
     }
 
     // Broadcast intent to opponent so they can play the animation

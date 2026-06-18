@@ -5,6 +5,8 @@ import { getEffectiveStats } from './buffs';
 export function legalMoves(state: GameState, player: PlayerId): Intent[] {
   if (state.winner) return [];
   if (state.turnPlayer !== player) return [];
+  // Opponent has a pending bench promotion — attacker must wait before acting further
+  if (state.pendingPromotions.length > 0) return [];
 
   const moves: Intent[] = [];
   const ps = state.players[player];
