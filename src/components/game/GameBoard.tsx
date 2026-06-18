@@ -1735,7 +1735,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
           }}>
             <div style={{
               width: '100%', background: 'var(--bg)',
-              borderRadius: '16px 16px 0 0', padding: '20px 16px 32px',
+              borderRadius: '16px 16px 0 0', padding: '20px 16px max(32px, env(safe-area-inset-bottom))',
               display: 'flex', flexDirection: 'column', gap: 14,
             }}>
               <p style={{

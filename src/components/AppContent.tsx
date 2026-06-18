@@ -414,7 +414,7 @@ export default function AppContent() {
           <div style={{
             width: '100%', maxWidth: 430, margin: '0 auto',
             background: 'var(--bg)', borderRadius: '16px 16px 0 0',
-            padding: 20, display: 'flex', flexDirection: 'column', gap: 12,
+            padding: '20px 20px max(20px, env(safe-area-inset-bottom))', display: 'flex', flexDirection: 'column', gap: 12,
           }}>
             <p style={{ fontFamily: 'Bangers, sans-serif', fontSize: 15, color: 'var(--ki)', margin: 0, letterSpacing: 1, textTransform: 'uppercase', textAlign: 'center' }}>
               Challenge from {incomingChallenge.challengerName}!
