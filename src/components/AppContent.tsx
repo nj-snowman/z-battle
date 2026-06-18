@@ -63,6 +63,10 @@ export default function AppContent() {
   const [acceptDeck, setAcceptDeck] = useState<string | null>(null);
   const [acceptLoading, setAcceptLoading] = useState(false);
 
+  const [pendingFriendCount, setPendingFriendCount] = useState(0);
+  const [onlineFriendCount, setOnlineFriendCount] = useState(0);
+  const friendIdsRef = useRef<Set<string>>(new Set());
+
   // Auth listener
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -142,6 +146,56 @@ export default function AppContent() {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
+  }, [user]);
+
+  // Friend notifications: pending requests + online count
+  useEffect(() => {
+    if (!user) { setPendingFriendCount(0); setOnlineFriendCount(0); return; }
+
+    async function refreshFriendships() {
+      const { data: rows } = await supabase
+        .from('friendships')
+        .select('*')
+        .or(`requester.eq.${user!.id},addressee.eq.${user!.id}`);
+      if (!rows) return;
+      const pending = rows.filter((r: { status: string; addressee: string }) => r.status === 'pending' && r.addressee === user!.id);
+      setPendingFriendCount(pending.length);
+      const accepted = rows.filter((r: { status: string }) => r.status === 'accepted');
+      const ids = new Set(accepted.map((r: { requester: string; addressee: string }) =>
+        r.requester === user!.id ? r.addressee : r.requester
+      ));
+      friendIdsRef.current = ids;
+    }
+
+    refreshFriendships();
+
+    const fsChannel = supabase.channel('app-friendships-watch')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, refreshFriendships)
+      .subscribe();
+
+    // Track presence to compute online friend count
+    ['realtime:app-presence-lobby'].forEach(topic => {
+      const stale = supabase.getChannels().find(c => c.topic === topic);
+      if (stale) supabase.removeChannel(stale);
+    });
+    const presenceChannel = supabase.channel('app-presence-lobby');
+    presenceChannel
+      .on('presence', { event: 'sync' }, () => {
+        const state = presenceChannel.presenceState<{ userId: string }>();
+        const onlineIds = new Set(Object.values(state).flat().map(p => p.userId));
+        const count = [...friendIdsRef.current].filter(id => onlineIds.has(id)).length;
+        setOnlineFriendCount(count);
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await presenceChannel.track({ userId: user.id });
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(fsChannel);
+      presenceChannel.untrack().then(() => supabase.removeChannel(presenceChannel));
+    };
   }, [user]);
 
   // AI turn runner
@@ -325,6 +379,8 @@ export default function AppContent() {
           onStart={handleSetupStart}
           userEmail={user?.email}
           onOpenFriends={user ? () => setScreen('friends') : undefined}
+          pendingFriendCount={pendingFriendCount}
+          onlineFriendCount={onlineFriendCount}
           onPowerLevel={user ? () => setScreen('power_level') : undefined}
           onVsFriend={user ? () => setScreen('lobby') : undefined}
           onSignOut={user ? () => supabase.auth.signOut() : undefined}

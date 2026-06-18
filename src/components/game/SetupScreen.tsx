@@ -15,6 +15,8 @@ interface SetupScreenProps {
   onVsFriend?: () => void;
   onSignOut?: () => void;
   onCacheImages?: () => void;
+  pendingFriendCount?: number;
+  onlineFriendCount?: number;
 }
 
 const DECK_IDS = ['saiyan', 'namekian', 'android', 'human', 'frieza_force'];
@@ -221,7 +223,7 @@ function LoadingScreen({ pending, onReady }: { pending: PendingGame; onReady: ()
   );
 }
 
-export default function SetupScreen({ onStart, userEmail, onOpenFriends, onPowerLevel, onVsFriend, onSignOut, onCacheImages }: SetupScreenProps) {
+export default function SetupScreen({ onStart, userEmail, onOpenFriends, onPowerLevel, onVsFriend, onSignOut, onCacheImages, pendingFriendCount = 0, onlineFriendCount = 0 }: SetupScreenProps) {
   const [screen, setScreen] = useState<'home' | 'setup' | 'loading'>('home');
   const [gameMode, setGameMode] = useState<GameMode>('vs_ai');
   const [p1Deck, setP1Deck] = useState<string | null>(null);
@@ -513,7 +515,29 @@ export default function SetupScreen({ onStart, userEmail, onOpenFriends, onPower
               flexDirection: 'column',
               alignItems: 'center',
               gap: 5,
+              position: 'relative',
             }}>
+              {pendingFriendCount > 0 && (
+                <div style={{
+                  position: 'absolute', top: 7, right: 9,
+                  background: '#ff3b30', borderRadius: '50%',
+                  minWidth: 17, height: 17,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  padding: '0 4px', boxSizing: 'border-box',
+                }}>
+                  <span style={{ fontFamily: 'Bangers, sans-serif', fontSize: 10, color: '#fff', letterSpacing: 0.5, lineHeight: 1 }}>
+                    {pendingFriendCount}
+                  </span>
+                </div>
+              )}
+              {pendingFriendCount === 0 && onlineFriendCount > 0 && (
+                <div style={{
+                  position: 'absolute', top: 9, right: 11,
+                  width: 8, height: 8, borderRadius: '50%',
+                  background: '#34c759',
+                  boxShadow: '0 0 5px #34c759aa',
+                }} />
+              )}
               <span style={{
                 fontFamily: 'Bangers, sans-serif',
                 fontSize: 14,
