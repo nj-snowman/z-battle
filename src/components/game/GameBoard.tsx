@@ -879,7 +879,18 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
         (m.type === 'play_item' && m.cardId === cardId &&
           !('targetIndex' in m) && !('targetSide' in m))
       );
-      if (noTargetMove) safeIntent(noTargetMove);
+      if (noTargetMove) {
+        const c = (() => { try { return getCard(cardId); } catch { return null; } })();
+        const abKind = c?.abilities[0]?.kind;
+        if (abKind === 'reveal_and_draw') {
+          setPileSelectForCard(cardId);
+        } else if (abKind === 'draw') {
+          const drawCount = (c?.abilities[0]?.params as any)?.draw ?? 1;
+          setMultiDrawSelect({ cardId, totalDraws: drawCount, picks: [] });
+        } else {
+          safeIntent(noTargetMove);
+        }
+      }
       setSelection({ mode: 'idle' });
       return;
     }
