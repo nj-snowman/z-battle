@@ -17,9 +17,11 @@ interface CardZoomOverlayProps {
   onClose: () => void;
   actions?: ZoomAction[];
   isOpponentFighter?: boolean;
+  effectiveAtk?: number;
+  effectiveDef?: number;
 }
 
-export default function CardZoomOverlay({ cardId, fighter, onClose, actions = [], isOpponentFighter = false }: CardZoomOverlayProps) {
+export default function CardZoomOverlay({ cardId, fighter, onClose, actions = [], isOpponentFighter = false, effectiveAtk, effectiveDef }: CardZoomOverlayProps) {
   const [confirmingIdx, setConfirmingIdx] = React.useState<number | null>(null);
   const [viewIdx, setViewIdx] = React.useState(0);
 
@@ -34,6 +36,18 @@ export default function CardZoomOverlay({ cardId, fighter, onClose, actions = []
 
   const name = card?.name ?? currentCardId;
   const hasActions = actions.length > 0 && isViewingHero;
+
+  const hpPct = fighter && fighter.maxHp > 0 ? fighter.currentHp / fighter.maxHp : null;
+  const isLowHp = hpPct !== null && hpPct <= 0.5;
+  const isStunned = fighter?.statuses.some(s => s.key === 'stun') ?? false;
+
+  function fmt(n: number): string {
+    if (n >= 1000) {
+      const v = n / 1000;
+      return v === Math.floor(v) ? `${v.toFixed(0)}k` : `${v.toFixed(1)}k`;
+    }
+    return String(n);
+  }
 
   return (
     <div
@@ -127,6 +141,78 @@ export default function CardZoomOverlay({ cardId, fighter, onClose, actions = []
             </div>
           )}
         </div>
+
+        {/* Live stats — shown only when viewing a fighter from the field */}
+        {fighter && hpPct !== null && isViewingHero && (
+          <div style={{
+            width: '100%',
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 12,
+            padding: '12px 16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+          }}>
+            {/* HP row */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1 }}>HP</span>
+                <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 18, color: isLowHp ? '#ff4d4d' : 'var(--hp)', lineHeight: 1 }}>
+                  {fmt(fighter.currentHp)}<span style={{ fontSize: 13, color: 'var(--muted)' }}>/{fmt(fighter.maxHp)}</span>
+                </span>
+              </div>
+              <div style={{ height: 6, borderRadius: 3, background: 'rgba(0,0,0,0.4)', overflow: 'hidden' }}>
+                <div style={{
+                  width: `${Math.max(0, hpPct * 100)}%`,
+                  height: '100%',
+                  background: isLowHp ? '#ff4d4d' : 'var(--hp)',
+                  borderRadius: 3,
+                  transition: 'width 0.3s',
+                }} />
+              </div>
+            </div>
+            {/* ATK / DEF row */}
+            {(effectiveAtk !== undefined || effectiveDef !== undefined) && (
+              <div style={{ display: 'flex', gap: 8 }}>
+                {effectiveAtk !== undefined && (
+                  <div style={{
+                    flex: 1, background: 'rgba(255,77,77,0.08)', border: '1px solid rgba(255,77,77,0.2)',
+                    borderRadius: 8, padding: '8px 12px',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                  }}>
+                    <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1 }}>ATK</span>
+                    <span style={{ fontFamily: 'Bangers, sans-serif', fontSize: 28, color: 'var(--atk)', letterSpacing: 1, lineHeight: 1 }}>{fmt(effectiveAtk)}</span>
+                  </div>
+                )}
+                {effectiveDef !== undefined && (
+                  <div style={{
+                    flex: 1, background: 'rgba(58,166,255,0.08)', border: '1px solid rgba(58,166,255,0.2)',
+                    borderRadius: 8, padding: '8px 12px',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                  }}>
+                    <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1 }}>DEF</span>
+                    <span style={{ fontFamily: 'Bangers, sans-serif', fontSize: 28, color: 'var(--def)', letterSpacing: 1, lineHeight: 1 }}>{fmt(effectiveDef)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+            {/* Status badges */}
+            {(fighter.summoningSick || fighter.hasAttackedThisTurn || isStunned) && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {fighter.summoningSick && (
+                  <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 10, fontWeight: 700, color: '#0d0f14', background: '#ffb648', borderRadius: 4, padding: '2px 8px', textTransform: 'uppercase', letterSpacing: 0.5 }}>SUMMONING SICK</span>
+                )}
+                {fighter.hasAttackedThisTurn && (
+                  <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 10, fontWeight: 700, color: '#0d0f14', background: 'var(--muted)', borderRadius: 4, padding: '2px 8px', textTransform: 'uppercase', letterSpacing: 0.5 }}>ACTED</span>
+                )}
+                {isStunned && (
+                  <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 10, fontWeight: 700, color: '#fff', background: 'var(--atk)', borderRadius: 4, padding: '2px 8px', textTransform: 'uppercase', letterSpacing: 0.5 }}>STUNNED</span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Card selector thumbnails (hero + equipment) */}
         {hasEquipment && (

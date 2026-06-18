@@ -849,7 +849,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
         if (fighter) setZoomedCard({ cardId: fighter.cardId, fighter, fighterSide: side, fighterIndex: index, isOpponentFighter: false });
       } else {
         const oppFighter = side === 'active' ? oppPlayer.actives[index] : oppPlayer.bench[index];
-        if (oppFighter) setZoomedCard({ cardId: oppFighter.cardId, fighter: oppFighter, isOpponentFighter: true });
+        if (oppFighter) setZoomedCard({ cardId: oppFighter.cardId, fighter: oppFighter, fighterSide: side, fighterIndex: index, isOpponentFighter: true });
       }
       return;
     }
@@ -1018,7 +1018,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     if (isOpponent) {
       const oppFighter = side === 'active' ? oppPlayer.actives[index] : oppPlayer.bench[index];
       if (oppFighter) {
-        setZoomedCard({ cardId: oppFighter.cardId, fighter: oppFighter, isOpponentFighter: true });
+        setZoomedCard({ cardId: oppFighter.cardId, fighter: oppFighter, fighterSide: side, fighterIndex: index, isOpponentFighter: true });
       }
     }
   }
@@ -2354,6 +2354,11 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
           }
         }
 
+        const zoomOwner = zoomedCard.isOpponentFighter ? oppId : perspectiveId;
+        const zoomEffStats = (zoomedCard.fighter && zoomedCard.fighterSide !== undefined && zoomedCard.fighterIndex !== undefined)
+          ? getEffectiveStats(zoomedCard.fighter, zoomedCard.fighterSide, zoomedCard.fighterIndex, zoomOwner, state)
+          : null;
+
         return (
           <CardZoomOverlay
             cardId={zoomedCard.cardId}
@@ -2361,6 +2366,8 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
             onClose={() => setZoomedCard(null)}
             actions={zoomActions}
             isOpponentFighter={zoomedCard?.isOpponentFighter ?? false}
+            effectiveAtk={zoomEffStats?.atk}
+            effectiveDef={zoomEffStats?.def}
           />
         );
       })()}
