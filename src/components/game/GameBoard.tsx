@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Image from 'next/image';
 import type { GameState, Intent, PlayerId } from '@/lib/engine/types';
 import { legalMoves } from '@/lib/engine';
@@ -258,6 +258,18 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     setSelection({ mode: 'idle' });
   }, [state]);
 
+  // When our turn starts, clear any stale animation lock left over from the previous turn.
+  // The lock can stay true if the auto-end-turn fires while a card animation is still running
+  // (the animation's cleanup timer hasn't fired yet when the turn switches).
+  useEffect(() => {
+    if (state.turnPlayer !== perspectiveId) return;
+    cardAnimLock.current = false;
+    pendingCardDispatch.current = null;
+    if (itemAnimTimerRef.current) { clearTimeout(itemAnimTimerRef.current); itemAnimTimerRef.current = null; }
+    setItemPlayAnim(null);
+    setItemAnimPhase('show');
+  }, [state.turnPlayer]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Field background crossfade — when state.field changes, fade out the old image
   useEffect(() => {
     const currentImage = (() => {
@@ -301,7 +313,8 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
   const oppId: PlayerId = perspectiveId === 'p1' ? 'p2' : 'p1';
   const oppPlayer = state.players[oppId];
   const isMyTurn = tp === perspectiveId;
-  const moves = isMyTurn ? legalMoves(state, tp) : [];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const moves = useMemo(() => isMyTurn ? legalMoves(state, tp) : [], [state, isMyTurn]);
 
   // Detect HP changes, KOs, turn switches, and phase changes for PTCGP effects
   useEffect(() => {
@@ -587,7 +600,8 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     setItemAnimPhase('show');
     itemAnimTimerRef.current = setTimeout(() => {
       setItemAnimPhase('exit');
-      pendingCardDispatch.current?.();
+      // Guard: only dispatch if it's still our turn (auto-end-turn may have already switched the turn)
+      if (stateRef.current.turnPlayer === perspectiveId) pendingCardDispatch.current?.();
       pendingCardDispatch.current = null;
       itemAnimTimerRef.current = setTimeout(() => {
         setItemPlayAnim(null);
@@ -639,7 +653,8 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     setItemAnimPhase('show');
     itemAnimTimerRef.current = setTimeout(() => {
       setItemAnimPhase('exit');
-      pendingCardDispatch.current?.();
+      // Guard: only dispatch if it's still our turn (auto-end-turn may have already switched the turn)
+      if (stateRef.current.turnPlayer === perspectiveId) pendingCardDispatch.current?.();
       pendingCardDispatch.current = null;
       itemAnimTimerRef.current = setTimeout(() => {
         setItemPlayAnim(null);
