@@ -250,6 +250,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     occupied: Record<string, boolean>;
     turn: PlayerId;
     phase: string;
+    friezaWrathSides: Set<string>;
   } | null>(null);
 
   // Reset selection when state changes
@@ -310,6 +311,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
       occupied: {} as Record<string, boolean>,
       turn: state.turnPlayer,
       phase: state.phase,
+      friezaWrathSides: new Set(state.pendingPromotions.filter(p => p.friezaWrathPending).map(p => p.side)),
     };
     const fill = (slots: Array<{ currentHp: number } | null>, pId: string, side: string) => {
       slots.forEach((f, i) => {
@@ -327,12 +329,16 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
       const dmgUpdates = new Map<string, { amount: number; seq: number }>();
       const newShake = new Set<string>();
       const newKo = new Set<string>();
-      const check = (slots: Array<{ currentHp: number } | null>, pId: string, side: string) => {
+      const check = (slots: Array<{ currentHp: number; maxHp: number } | null>, pId: string, side: string) => {
         slots.forEach((f, i) => {
           const k = `${pId}-${side}-${i}`;
           if (f) {
             if (snap.occupied[k] && f.currentHp < (snap.hp[k] ?? f.currentHp)) {
               dmgUpdates.set(k, { amount: (snap.hp[k] ?? 0) - f.currentHp, seq: ++dmgSeqRef.current });
+              newShake.add(k);
+            } else if (!snap.occupied[k] && side === 'active' && snap.friezaWrathSides.has(pId) && f.currentHp < f.maxHp) {
+              // Fighter just promoted in but took Frieza's Emperor's Wrath damage on entry
+              dmgUpdates.set(k, { amount: f.maxHp - f.currentHp, seq: ++dmgSeqRef.current });
               newShake.add(k);
             }
           } else if (snap.occupied[k]) {
@@ -340,10 +346,10 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
           }
         });
       };
-      check(state.players.p1.actives as Array<{ currentHp: number } | null>, 'p1', 'active');
-      check(state.players.p1.bench as Array<{ currentHp: number } | null>, 'p1', 'bench');
-      check(state.players.p2.actives as Array<{ currentHp: number } | null>, 'p2', 'active');
-      check(state.players.p2.bench as Array<{ currentHp: number } | null>, 'p2', 'bench');
+      check(state.players.p1.actives as Array<{ currentHp: number; maxHp: number } | null>, 'p1', 'active');
+      check(state.players.p1.bench as Array<{ currentHp: number; maxHp: number } | null>, 'p1', 'bench');
+      check(state.players.p2.actives as Array<{ currentHp: number; maxHp: number } | null>, 'p2', 'active');
+      check(state.players.p2.bench as Array<{ currentHp: number; maxHp: number } | null>, 'p2', 'bench');
       if (dmgUpdates.size > 0) {
         setDamageSlots(prev => new Map([...prev, ...dmgUpdates]));
         setTimeout(() => setDamageSlots(prev => { const n = new Map(prev); dmgUpdates.forEach((_, k) => n.delete(k)); return n; }), 1200);
@@ -351,6 +357,15 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
         if ([...dmgUpdates.keys()].some(k => k.includes('-active-'))) {
           setBeamClash(true);
           setTimeout(() => setBeamClash(false), 600);
+        }
+        // Frieza's Emperor's Wrath narration — fires when a promoted fighter takes entry damage
+        const wrathKeys = [...dmgUpdates.keys()].filter(k => {
+          const [pId, side] = k.split('-');
+          return side === 'active' && snap.friezaWrathSides.has(pId);
+        });
+        if (wrathKeys.length > 0) {
+          setNarration("EMPEROR'S WRATH!");
+          setTimeout(() => setNarration(null), 2500);
         }
       }
       if (newShake.size > 0) {
