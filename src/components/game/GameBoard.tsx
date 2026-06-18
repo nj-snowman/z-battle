@@ -542,7 +542,12 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
       m.type !== 'advance_phase' && m.type !== 'end_turn' && m.type !== 'sacrifice'
     );
     if (freeMoves.length > 0) return;
-    onIntent({ type: 'end_turn' });
+    setNarration('OUT OF KI!');
+    const t = setTimeout(() => {
+      setNarration(null);
+      onIntent({ type: 'end_turn' });
+    }, 900);
+    return () => clearTimeout(t);
   }, [state, isMyTurn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- Item / field card play animation ----
