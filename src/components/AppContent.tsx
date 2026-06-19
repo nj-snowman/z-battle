@@ -4,7 +4,6 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { User } from '@supabase/supabase-js';
 import type { GameState, Intent, PlayerId } from '@/lib/engine/types';
 import { applyIntent, createInitialState } from '@/lib/engine';
-import { getDeckCardImages } from '@/lib/engine/cards';
 import { chooseMove } from '@/lib/engine/ai';
 import { supabase } from '@/lib/supabase/client';
 import type { Match } from '@/lib/supabase/types';
@@ -66,17 +65,6 @@ export default function AppContent() {
 
   const [pendingFriendCount, setPendingFriendCount] = useState(0);
 
-  function preloadDecks(...deckIds: string[]) {
-    const seen = new Set<string>();
-    for (const id of deckIds) {
-      for (const src of getDeckCardImages(id)) {
-        if (seen.has(src)) continue;
-        seen.add(src);
-        const img = new window.Image();
-        img.src = src;
-      }
-    }
-  }
   const [onlineFriendCount, setOnlineFriendCount] = useState(0);
   const friendIdsRef = useRef<Set<string>>(new Set());
 
@@ -282,7 +270,6 @@ export default function AppContent() {
   function handleScoutDone() {
     if (!pendingSetup) return;
     const { p1Deck, p2Deck, firstPlayer, mode } = pendingSetup;
-    preloadDecks(p1Deck, p2Deck);
     const state = createInitialState(p1Deck, p2Deck, firstPlayer);
     setGameState(state);
     setCurrentGameMode(mode);
@@ -301,7 +288,6 @@ export default function AppContent() {
 
     const m = match as Match;
     const firstPlayer: PlayerId = Math.random() < 0.5 ? 'p1' : 'p2';
-    preloadDecks(m.player1_deck!, acceptDeck);
     const gs = createInitialState(m.player1_deck!, acceptDeck, firstPlayer);
 
     await supabase.from('matches').update({

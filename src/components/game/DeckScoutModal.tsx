@@ -10,19 +10,6 @@ interface DeckScoutModalProps {
   onDone: () => void;
 }
 
-const SIZE_BUCKETS = [16, 32, 48, 64, 96, 128, 256, 384, 640, 750, 828, 1080, 1200];
-
-function bucket(displayPx: number, dpr: number): number {
-  const needed = displayPx * dpr;
-  return SIZE_BUCKETS.find(b => b >= needed) ?? 640;
-}
-
-function getPreloadWidths(): number[] {
-  const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 2;
-  const handW = bucket(86, dpr);
-  const fieldW = bucket(140, dpr);
-  return handW === fieldW ? [handW] : [handW, fieldW];
-}
 
 function getDeckImages(deckId: string): string[] {
   const deck = DECKS[deckId];
@@ -73,10 +60,9 @@ export default function DeckScoutModal({ p1Deck, p2Deck, isVsAi = false, onDone 
 
   useEffect(() => {
     const startTime = Date.now();
-    const widths = getPreloadWidths();
 
     const allImages = [...new Set([...getDeckImages(p1Deck), ...getDeckImages(p2Deck)])];
-    const n = allImages.length * widths.length;
+    const n = allImages.length;
     setTotal(n || 1);
     countRef.current = 0;
 
@@ -93,19 +79,16 @@ export default function DeckScoutModal({ p1Deck, p2Deck, isVsAi = false, onDone 
     if (n === 0) { finish(0); return; }
 
     for (const path of allImages) {
-      for (const w of widths) {
-        const url = `/_next/image?url=${encodeURIComponent('/' + path)}&w=${w}&q=75`;
-        const img = new window.Image();
-        const done = () => {
-          countRef.current += 1;
-          const c = countRef.current;
-          setLoaded(c);
-          finish(c);
-        };
-        img.onload = done;
-        img.onerror = done;
-        img.src = url;
-      }
+      const img = new window.Image();
+      const done = () => {
+        countRef.current += 1;
+        const c = countRef.current;
+        setLoaded(c);
+        finish(c);
+      };
+      img.onload = done;
+      img.onerror = done;
+      img.src = `/${path}`;
     }
   // onDone is intentionally excluded — we only want this to run once on mount
   // eslint-disable-next-line react-hooks/exhaustive-deps

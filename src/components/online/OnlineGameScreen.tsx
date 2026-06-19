@@ -7,7 +7,22 @@ import { supabase } from '@/lib/supabase/client';
 import type { Match } from '@/lib/supabase/types';
 import type { GameState, Intent, PlayerId } from '@/lib/engine/types';
 import { applyIntent } from '@/lib/engine';
-import { getDeckCardImages } from '@/lib/engine/cards';
+import { DECKS, getCard } from '@/lib/engine/cards';
+
+function preloadDeck(deckId: string | null, seen: Set<string>) {
+  if (!deckId) return;
+  const deck = DECKS[deckId];
+  if (!deck) return;
+  for (const id of [...deck.heroes, ...deck.items]) {
+    try {
+      const img = getCard(id).image;
+      if (!img || seen.has(img)) continue;
+      seen.add(img);
+      const el = new window.Image();
+      el.src = `/${img}`;
+    } catch { /* skip */ }
+  }
+}
 import GameBoard from '@/components/game/GameBoard';
 
 interface OnlineGameScreenProps {
@@ -33,15 +48,8 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
         setMatchData(data as Match);
         if (data.state) setGameState(data.state as GameState);
         const seen = new Set<string>();
-        for (const deckId of [data.player1_deck, data.player2_deck]) {
-          if (!deckId) continue;
-          for (const src of getDeckCardImages(deckId)) {
-            if (seen.has(src)) continue;
-            seen.add(src);
-            const img = new window.Image();
-            img.src = src;
-          }
-        }
+        preloadDeck(data.player1_deck, seen);
+        preloadDeck(data.player2_deck, seen);
       }
       setLoading(false);
     });
