@@ -19,9 +19,12 @@ export const DECKS = (cardsData as any).decks as Record<string, {
 
 export const CONSTANTS = (cardsData as any).meta.constants;
 
-export function getAllCardImages(): string[] {
-  return (cardsData as any).cards
-    .map((c: any) => c.image as string | undefined)
-    .filter(Boolean)
-    .map((img: string) => `/${img}`);
+export function getDeckCardImages(deckId: string): string[] {
+  const deck = DECKS[deckId];
+  if (!deck) return [];
+  return [...deck.heroes, ...deck.items]
+    .flatMap(id => { try { return [getCard(id)]; } catch { return []; } })
+    .map(c => c.image)
+    .filter((img): img is string => Boolean(img))
+    .map(img => `/${img}`);
 }

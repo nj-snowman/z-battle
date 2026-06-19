@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase/client';
 import type { Match } from '@/lib/supabase/types';
 import type { GameState, Intent, PlayerId } from '@/lib/engine/types';
 import { applyIntent } from '@/lib/engine';
+import { getDeckCardImages } from '@/lib/engine/cards';
 import GameBoard from '@/components/game/GameBoard';
 
 interface OnlineGameScreenProps {
@@ -25,12 +26,22 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
   const [pendingEnemyPlay, setPendingEnemyPlay] = useState<Intent | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
 
-  // Load initial state
+  // Load initial state and preload both decks' images
   useEffect(() => {
     supabase.from('matches').select('*').eq('id', matchId).single().then(({ data }) => {
       if (data) {
         setMatchData(data as Match);
         if (data.state) setGameState(data.state as GameState);
+        const seen = new Set<string>();
+        for (const deckId of [data.player1_deck, data.player2_deck]) {
+          if (!deckId) continue;
+          for (const src of getDeckCardImages(deckId)) {
+            if (seen.has(src)) continue;
+            seen.add(src);
+            const img = new window.Image();
+            img.src = src;
+          }
+        }
       }
       setLoading(false);
     });
