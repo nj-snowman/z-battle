@@ -2214,10 +2214,12 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
                     setHeldCardOrigIdx(origIdx);
                   }, 400);
 
-                  // Capture pointer so onPointerUp fires reliably even for non-dragging players
+                  // Capture pointer and suppress the click event that Safari fires after
+                  // pointerup — without preventDefault the click would hit the zoom overlay
+                  // backdrop and immediately close the modal we're about to open.
                   e.currentTarget.setPointerCapture(e.pointerId);
-                  if (!canDrag) return;
                   e.preventDefault();
+                  if (!canDrag) return;
                   const info: DragInfo = {
                     cardId, handIdx: origIdx,
                     startX: e.clientX, startY: e.clientY,

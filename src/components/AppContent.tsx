@@ -4,6 +4,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { User } from '@supabase/supabase-js';
 import type { GameState, Intent, PlayerId } from '@/lib/engine/types';
 import { applyIntent, createInitialState } from '@/lib/engine';
+import { getAllCardImages } from '@/lib/engine/cards';
 import { chooseMove } from '@/lib/engine/ai';
 import { supabase } from '@/lib/supabase/client';
 import type { Match } from '@/lib/supabase/types';
@@ -64,6 +65,14 @@ export default function AppContent() {
   const [acceptLoading, setAcceptLoading] = useState(false);
 
   const [pendingFriendCount, setPendingFriendCount] = useState(0);
+
+  // Silently preload all card images into the browser cache at startup
+  useEffect(() => {
+    getAllCardImages().forEach(src => {
+      const img = new window.Image();
+      img.src = src;
+    });
+  }, []);
   const [onlineFriendCount, setOnlineFriendCount] = useState(0);
   const friendIdsRef = useRef<Set<string>>(new Set());
 

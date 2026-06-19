@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import Image from 'next/image';
 import type { FighterInstance } from '@/lib/engine/types';
 import { getCard } from '@/lib/engine/cards';
 
@@ -220,13 +219,10 @@ export default function FighterSlot({
             }}
           >
             {eqCard?.image ? (
-              <Image
-                fill
+              <img
                 src={`/${eqCard.image}`}
                 alt={eqCard.name ?? eqId}
-                sizes="140px"
-                loading="eager"
-                style={{ objectFit: 'cover' }}
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
               />
             ) : (
               <div style={{
@@ -293,13 +289,10 @@ export default function FighterSlot({
           background: `${accent}18`,
         }}>
           {card?.image ? (
-            <Image
-              fill
+            <img
               src={`/${card.image}`}
               alt={name}
-              sizes="140px"
-              loading="eager"
-              style={{ objectFit: 'cover', objectPosition: 'top center' }}
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center', display: 'block' }}
             />
           ) : (
             <div style={{

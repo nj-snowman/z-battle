@@ -106,26 +106,6 @@ const CARD_IMAGES = [
   'images/capital_of_the_cold_empire.png',
 ];
 
-// Next.js image size buckets (imageSizes + deviceSizes combined for fill images)
-const SIZE_BUCKETS = [16, 32, 48, 64, 96, 128, 256, 384, 640, 750, 828, 1080, 1200];
-
-function bucket(displayPx: number, dpr: number): number {
-  const needed = displayPx * dpr;
-  return SIZE_BUCKETS.find(b => b >= needed) ?? 640;
-}
-
-// Returns the 1–2 distinct widths the browser will actually request for this device,
-// covering both hand cards (86px) and active fighter slots (140px).
-function preloadWidths(): number[] {
-  const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 2;
-  const handW  = bucket(86,  dpr);
-  const fieldW = bucket(140, dpr);
-  return handW === fieldW ? [handW] : [handW, fieldW];
-}
-
-function optimisedUrl(path: string, w: number): string {
-  return `/_next/image?url=${encodeURIComponent('/' + path)}&w=${w}&q=75`;
-}
 
 type Mode = 'prompt' | 'loading' | 'done';
 
@@ -136,7 +116,7 @@ interface ImageCacheModalProps {
 export default function ImageCacheModal({ onClose }: ImageCacheModalProps) {
   const [mode, setMode] = useState<Mode>('prompt');
   const [loaded, setLoaded] = useState(0);
-  const [total, setTotal] = useState(CARD_IMAGES.length);
+  const total = CARD_IMAGES.length;
   const countRef = useRef(0);
 
   // Read user's scouter colour preference (default green)
@@ -156,27 +136,21 @@ export default function ImageCacheModal({ onClose }: ImageCacheModalProps) {
     setMode('loading');
     countRef.current = 0;
 
-    const widths = preloadWidths();
-    const n_total = CARD_IMAGES.length * widths.length;
-    setTotal(n_total);
-
     for (const path of CARD_IMAGES) {
-      for (const w of widths) {
-        const img = new window.Image();
-        const done = () => {
-          countRef.current += 1;
-          const n = countRef.current;
-          setLoaded(n);
-          if (n === n_total) {
-            localStorage.setItem(CACHE_STORAGE_KEY, '1');
-            setMode('done');
-            setTimeout(onClose, 1800);
-          }
-        };
-        img.onload = done;
-        img.onerror = done;
-        img.src = optimisedUrl(path, w);
-      }
+      const img = new window.Image();
+      const done = () => {
+        countRef.current += 1;
+        const n = countRef.current;
+        setLoaded(n);
+        if (n === CARD_IMAGES.length) {
+          localStorage.setItem(CACHE_STORAGE_KEY, '1');
+          setMode('done');
+          setTimeout(onClose, 1800);
+        }
+      };
+      img.onload = done;
+      img.onerror = done;
+      img.src = '/' + path;
     }
   }, [onClose]);
 

@@ -18,3 +18,10 @@ export const DECKS = (cardsData as any).decks as Record<string, {
 }>;
 
 export const CONSTANTS = (cardsData as any).meta.constants;
+
+export function getAllCardImages(): string[] {
+  return (cardsData as any).cards
+    .map((c: any) => c.image as string | undefined)
+    .filter(Boolean)
+    .map((img: string) => `/${img}`);
+}
