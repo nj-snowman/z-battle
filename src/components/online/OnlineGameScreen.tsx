@@ -7,23 +7,8 @@ import { supabase } from '@/lib/supabase/client';
 import type { Match } from '@/lib/supabase/types';
 import type { GameState, Intent, PlayerId } from '@/lib/engine/types';
 import { applyIntent } from '@/lib/engine';
-import { DECKS, getCard } from '@/lib/engine/cards';
-
-function preloadDeck(deckId: string | null, seen: Set<string>) {
-  if (!deckId) return;
-  const deck = DECKS[deckId];
-  if (!deck) return;
-  for (const id of [...deck.heroes, ...deck.items]) {
-    try {
-      const img = getCard(id).image;
-      if (!img || seen.has(img)) continue;
-      seen.add(img);
-      const el = new window.Image();
-      el.src = `/${img}`;
-    } catch { /* skip */ }
-  }
-}
 import GameBoard from '@/components/game/GameBoard';
+import DeckScoutModal from '@/components/game/DeckScoutModal';
 
 interface OnlineGameScreenProps {
   matchId: string;
@@ -37,19 +22,17 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [matchData, setMatchData] = useState<Match | null>(null);
   const [loading, setLoading] = useState(true);
+  const [scoutDone, setScoutDone] = useState(false);
   const [pendingEnemyAttack, setPendingEnemyAttack] = useState<Intent | null>(null);
   const [pendingEnemyPlay, setPendingEnemyPlay] = useState<Intent | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
 
-  // Load initial state and preload both decks' images
+  // Load initial state
   useEffect(() => {
     supabase.from('matches').select('*').eq('id', matchId).single().then(({ data }) => {
       if (data) {
         setMatchData(data as Match);
         if (data.state) setGameState(data.state as GameState);
-        const seen = new Set<string>();
-        preloadDeck(data.player1_deck, seen);
-        preloadDeck(data.player2_deck, seen);
       }
       setLoading(false);
     });
@@ -127,17 +110,12 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
     }
   }, [gameState, matchData, matchId, myRole, onGameEnd]);
 
+  // Brief fetch phase — show nothing while Supabase query resolves
   if (loading) {
-    return (
-      <div style={{ width: '100%', maxWidth: 430, minHeight: '100dvh', margin: '0 auto', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ fontFamily: 'Bangers, sans-serif', fontSize: 14, color: 'var(--muted)', letterSpacing: 2, textTransform: 'uppercase' }}>
-          LOADING…
-        </span>
-      </div>
-    );
+    return <div style={{ width: '100%', minHeight: '100dvh', background: 'var(--bg)' }} />;
   }
 
-  if (!gameState) {
+  if (!gameState || !matchData) {
     return (
       <div style={{ width: '100%', maxWidth: 430, minHeight: '100dvh', margin: '0 auto', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
         <span style={{ fontFamily: 'Bangers, sans-serif', fontSize: 14, color: 'var(--muted)', letterSpacing: 2, textTransform: 'uppercase' }}>
@@ -147,6 +125,17 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
           BACK TO LOBBY
         </button>
       </div>
+    );
+  }
+
+  // Show scouter screen (preloads deck images) until it signals done
+  if (!scoutDone && matchData.player1_deck && matchData.player2_deck) {
+    return (
+      <DeckScoutModal
+        p1Deck={matchData.player1_deck}
+        p2Deck={matchData.player2_deck}
+        onDone={() => setScoutDone(true)}
+      />
     );
   }
 
