@@ -291,6 +291,7 @@ export default function FriendsScreen({ user, onChallenge, onBack }: FriendsScre
                     <div style={{
                       width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
                       background: f.isOnline ? '#34c759' : 'rgba(255,255,255,0.2)',
+                      boxShadow: f.isOnline ? '0 0 6px #34c759' : 'none',
                     }} />
                     <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 13, color: 'var(--ink)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                       {f.displayName}

@@ -46,11 +46,18 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
         // Clear attacked flags and summoning sickness for next player's fighters
         nextPlayerState.actives = nextPlayerState.actives.map(f => {
           if (!f) return null;
-          // If fighter has cannotAttackNextTurn, mark as hasAttackedThisTurn so they can't attack.
-          // Keep 'their_next_turn' statuses (e.g. stun) alive so the badge shows during the stunned turn;
-          // processEndOfTurn will clear them at the end of the stunned player's own turn.
+          // If fighter has cannotAttackNextTurn (e.g. Frieza post-Supernova), mark as fully stunned
+          // for their next turn: can't attack, can't retreat, stun badge shows.
+          // processEndOfTurn clears the stun status + cannotRetreatThisTurn at the end of that turn.
           if (f.cannotAttackNextTurn) {
-            return { ...f, hasAttackedThisTurn: true, cannotAttackNextTurn: false, summoningSick: false };
+            return {
+              ...f,
+              hasAttackedThisTurn: true,
+              cannotAttackNextTurn: false,
+              cannotRetreatThisTurn: true,
+              statuses: [...f.statuses, { key: 'stun', until: 'their_next_turn' as const }],
+              summoningSick: false,
+            };
           }
           return { ...f, hasAttackedThisTurn: false, summoningSick: false, statuses: f.statuses.filter(st => st.until !== 'their_next_turn') };
         }) as typeof nextPlayerState.actives;
@@ -211,6 +218,7 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
       const active = player.actives[intent.activeIndex];
       const bench = player.bench[intent.benchIndex];
       if (!active || !bench) throw new Error('Invalid retreat: slot empty');
+      if (active.cannotRetreatThisTurn) throw new Error('Fighter cannot retreat this turn');
 
       player.kiCurrent -= 1;
       player.retreatUsedThisTurn = true;
@@ -424,20 +432,35 @@ function applyUltimate(s: GameState, tp: PlayerId, opp: PlayerId, ab: any, targe
       const ginyuIdx = player.actives.findIndex(f => f && f.cardId === 'captain_ginyu');
       if (ginyuIdx === -1) break;
       const ginyu = player.actives[ginyuIdx]!;
-      const ginyuCard = getCard(ginyu.cardId);
       const target = s.players[opp].actives[targetIndex];
       if (!target) break;
-      const targetCard = getCard(target.cardId);
-      // Use current effective ATK (respects prior swaps)
-      const ginyuAtk = ginyu.counters['swappedAtk'] ?? ginyuCard.atk ?? 0;
-      const targetAtk = target.counters['swappedAtk'] ?? targetCard.atk ?? 0;
-      // Write swapped values onto both fighters via counters.swappedAtk
+
+      // Full body swap: cardId, HP, equipment, statuses, counters travel with the body.
+      // Action state (hasAttackedThisTurn, summoningSick) stays with the soul (the slot).
+      // Ginyu's oncePerGameUsed merges onto the body going to the opponent so they can't re-use body_change.
+      const ginyuNewBody = {
+        ...target,
+        hasAttackedThisTurn: ginyu.hasAttackedThisTurn,
+        summoningSick: ginyu.summoningSick,
+        oncePerGameUsed: ginyu.oncePerGameUsed,
+        cannotAttackNextTurn: ginyu.cannotAttackNextTurn,
+        cannotRetreatThisTurn: ginyu.cannotRetreatThisTurn,
+      };
+      const targetNewBody = {
+        ...ginyu,
+        hasAttackedThisTurn: target.hasAttackedThisTurn,
+        summoningSick: target.summoningSick,
+        oncePerGameUsed: { ...target.oncePerGameUsed, ...ginyu.oncePerGameUsed },
+        cannotAttackNextTurn: target.cannotAttackNextTurn,
+        cannotRetreatThisTurn: target.cannotRetreatThisTurn,
+      };
+
       const newActives = [...player.actives] as typeof player.actives;
-      newActives[ginyuIdx] = { ...ginyu, counters: { ...ginyu.counters, swappedAtk: targetAtk } };
+      newActives[ginyuIdx] = ginyuNewBody;
       s = { ...s, players: { ...s.players, [tp]: { ...player, actives: newActives } } };
       const oppPlayer = s.players[opp];
       const newOppActives = [...oppPlayer.actives] as typeof oppPlayer.actives;
-      newOppActives[targetIndex] = { ...target, counters: { ...target.counters, swappedAtk: ginyuAtk } };
+      newOppActives[targetIndex] = targetNewBody;
       s = { ...s, players: { ...s.players, [opp]: { ...oppPlayer, actives: newOppActives } } };
       break;
     }
@@ -780,9 +803,9 @@ function processEndOfTurn(s: GameState): GameState {
     newDiscard.push(discarded);
   }
 
-  // Clear stun statuses after the stunned player has had their turn to act
+  // Clear stun statuses and retreat block after the stunned player has had their turn to act
   player.actives = player.actives.map(f =>
-    f ? { ...f, statuses: f.statuses.filter(st => st.until !== 'their_next_turn') } : null
+    f ? { ...f, statuses: f.statuses.filter(st => st.until !== 'their_next_turn'), cannotRetreatThisTurn: undefined } : null
   ) as typeof player.actives;
   player.bench = player.bench.map(f =>
     f ? { ...f, statuses: f.statuses.filter(st => st.until !== 'their_next_turn') } : null

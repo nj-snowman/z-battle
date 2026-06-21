@@ -16,16 +16,18 @@ const DECK_OPTIONS = [
 
 interface LobbyScreenProps {
   user: User;
+  presenceIds: Set<string>;
   onCreateMatch: (matchId: string) => void;
   onJoinMatch: (matchId: string, myRole: PlayerId) => void;
   onBack: () => void;
   onSignOut: () => void;
 }
 
-export default function LobbyScreen({ user, onCreateMatch, onJoinMatch, onBack, onSignOut }: LobbyScreenProps) {
+export default function LobbyScreen({ user, presenceIds, onCreateMatch, onJoinMatch, onBack, onSignOut }: LobbyScreenProps) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [openMatches, setOpenMatches] = useState<Match[]>([]);
   const [myMatches, setMyMatches] = useState<Match[]>([]);
+  const [opponentNames, setOpponentNames] = useState<Record<string, string>>({});
   const [createDeck, setCreateDeck] = useState<string | null>(null);
   const [joiningMatch, setJoiningMatch] = useState<Match | null>(null);
   const [joinDeck, setJoinDeck] = useState<string | null>(null);
@@ -55,8 +57,21 @@ export default function LobbyScreen({ user, onCreateMatch, onJoinMatch, onBack, 
       supabase.from('matches').select('*').eq('status', 'waiting').neq('player1', user.id),
       supabase.from('matches').select('*').in('status', ['waiting', 'invited', 'active']).or(`player1.eq.${user.id},player2.eq.${user.id}`),
     ]);
+    const myMatchData = (mine.data ?? []) as Match[];
     setOpenMatches((open.data ?? []) as Match[]);
-    setMyMatches((mine.data ?? []) as Match[]);
+    setMyMatches(myMatchData);
+
+    const opponentIds = [...new Set(
+      myMatchData
+        .map(m => (m.player1 === user.id ? m.player2 : m.player1))
+        .filter((id): id is string => !!id)
+    )];
+    if (opponentIds.length > 0) {
+      const { data: profiles } = await supabase.from('profiles').select('id, display_name').in('id', opponentIds);
+      const map: Record<string, string> = {};
+      profiles?.forEach((p: { id: string; display_name: string }) => { map[p.id] = p.display_name; });
+      setOpponentNames(map);
+    }
   }
 
   async function handleCreateMatch() {
@@ -176,25 +191,42 @@ export default function LobbyScreen({ user, onCreateMatch, onJoinMatch, onBack, 
             Your Matches
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {myMatches.map(m => (
-              <div key={m.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                <div>
-                  <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 11, color: 'var(--ink)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                    {m.status === 'waiting' ? 'Waiting for opponent…' : m.status === 'invited' ? 'Challenge sent…' : 'Active'}
-                  </span>
-                  <p style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 9, color: 'var(--muted)', margin: 0, textTransform: 'uppercase', letterSpacing: 1 }}>
-                    {m.player1 === user.id ? m.player1_deck : m.player2_deck} deck
-                  </p>
+            {myMatches.map(m => {
+              const opponentId = m.player1 === user.id ? m.player2 : m.player1;
+              const opponentName = opponentId ? opponentNames[opponentId] : undefined;
+              const isOpponentOnline = opponentId ? presenceIds.has(opponentId) : false;
+              return (
+                <div key={m.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <div>
+                    {opponentName && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                        <div style={{
+                          width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+                          background: isOpponentOnline ? '#34c759' : 'rgba(255,255,255,0.2)',
+                          boxShadow: isOpponentOnline ? '0 0 6px #34c759' : 'none',
+                        }} />
+                        <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 12, color: 'var(--ink)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                          {opponentName}
+                        </span>
+                      </div>
+                    )}
+                    <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      {m.status === 'waiting' ? 'Waiting for opponent…' : m.status === 'invited' ? 'Challenge sent…' : 'Active'}
+                    </span>
+                    <p style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 9, color: 'var(--muted)', margin: 0, textTransform: 'uppercase', letterSpacing: 1 }}>
+                      {m.player1 === user.id ? m.player1_deck : m.player2_deck} deck
+                    </p>
+                  </div>
+                  <button onClick={() => handleResumeMatch(m)} style={{
+                    background: 'linear-gradient(135deg, var(--ki), var(--ki2))', border: 'none',
+                    borderRadius: 8, padding: '8px 14px', cursor: 'pointer',
+                    fontFamily: 'Bangers, sans-serif', fontSize: 11, color: '#0d0f14', letterSpacing: 1, textTransform: 'uppercase',
+                  }}>
+                    {m.status === 'waiting' ? 'WAITING' : 'RESUME'}
+                  </button>
                 </div>
-                <button onClick={() => handleResumeMatch(m)} style={{
-                  background: 'linear-gradient(135deg, var(--ki), var(--ki2))', border: 'none',
-                  borderRadius: 8, padding: '8px 14px', cursor: 'pointer',
-                  fontFamily: 'Bangers, sans-serif', fontSize: 11, color: '#0d0f14', letterSpacing: 1, textTransform: 'uppercase',
-                }}>
-                  {m.status === 'waiting' ? 'WAITING' : 'RESUME'}
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

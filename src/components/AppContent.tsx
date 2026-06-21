@@ -66,6 +66,7 @@ export default function AppContent() {
   const [pendingFriendCount, setPendingFriendCount] = useState(0);
 
   const [onlineFriendCount, setOnlineFriendCount] = useState(0);
+  const [presenceIds, setPresenceIds] = useState<Set<string>>(new Set());
   const friendIdsRef = useRef<Set<string>>(new Set());
 
   // Auth listener
@@ -183,9 +184,10 @@ export default function AppContent() {
     presenceChannel
       .on('presence', { event: 'sync' }, () => {
         const state = presenceChannel.presenceState<{ userId: string }>();
-        const onlineIds = new Set(Object.values(state).flat().map(p => p.userId));
-        const count = [...friendIdsRef.current].filter(id => onlineIds.has(id)).length;
+        const ids = new Set(Object.values(state).flat().map(p => p.userId));
+        const count = [...friendIdsRef.current].filter(id => ids.has(id)).length;
         setOnlineFriendCount(count);
+        setPresenceIds(ids);
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
@@ -325,6 +327,7 @@ export default function AppContent() {
       {screen === 'lobby' && user && (
         <LobbyScreen
           user={user}
+          presenceIds={presenceIds}
           onCreateMatch={(id) => { setActiveMatchId(id); setMyOnlineRole('p1'); setScreen('waiting_room'); }}
           onJoinMatch={(id, role) => { setActiveMatchId(id); setMyOnlineRole(role); setScreen('online_game'); }}
           onBack={() => setScreen('setup')}

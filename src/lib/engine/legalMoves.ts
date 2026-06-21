@@ -149,7 +149,9 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
       // Retreat (Main 1 only)
       if (state.phase === 'main1' && !ps.retreatUsedThisTurn && ps.kiCurrent >= 1) {
         for (let ai = 0; ai < ps.actives.length; ai++) {
-          if (!ps.actives[ai]) continue;
+          const af = ps.actives[ai];
+          if (!af) continue;
+          if (af.cannotRetreatThisTurn) continue;
           for (let bi = 0; bi < ps.bench.length; bi++) {
             if (!ps.bench[bi]) continue;
             moves.push({ type: 'retreat', activeIndex: ai, benchIndex: bi });

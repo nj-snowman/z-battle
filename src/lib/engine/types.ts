@@ -18,7 +18,8 @@ export interface FighterInstance {
   oncePerGameUsed: Record<string, boolean>;
   counters: Record<string, number>; // e.g. { legendary: 3 }
   statuses: StatusEffect[];
-  cannotAttackNextTurn?: boolean; // Frieza Supernova
+  cannotAttackNextTurn?: boolean; // Frieza Supernova — converted to hasAttackedThisTurn on next turn
+  cannotRetreatThisTurn?: boolean; // Frieza Supernova — set alongside hasAttackedThisTurn during stun turn
 }
 
 export interface PlayerState {
