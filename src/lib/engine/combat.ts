@@ -71,7 +71,7 @@ export function resolveKo(
       const entry: PendingPromotion = {
         side: koDSide,
         activeIndex: index,
-        friezaWrathPending: hasFriezaWrathTrigger(s, attackerSide),
+        friezaWrathPending: hasFriezaWrathTrigger(s, attackerSide, attackerIndex),
       };
       s = { ...s, pendingPromotions: [...s.pendingPromotions, entry] };
     }
@@ -153,9 +153,12 @@ function triggerBioAbsorption(s: GameState, scoringSide: PlayerId): GameState {
   return s;
 }
 
-function hasFriezaWrathTrigger(s: GameState, attackerSide: PlayerId): boolean {
+function hasFriezaWrathTrigger(s: GameState, attackerSide: PlayerId, attackerIndex?: number): boolean {
   const player = s.players[attackerSide];
-  for (const f of player.actives) {
+  const toCheck = attackerIndex !== undefined
+    ? [player.actives[attackerIndex]]
+    : player.actives;
+  for (const f of toCheck) {
     if (!f) continue;
     const card = getCard(f.cardId);
     for (const ab of card.abilities) {

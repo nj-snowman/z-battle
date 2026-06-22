@@ -423,13 +423,10 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     }
     if (intent.type === 'play_hero') { startHeroPlayAnim(intent, dispatch); return; }
     if (intent.type === 'play_item') {
-      // Intercept recur_from_discard plays — show picker if no choice made yet
-      if (intent.discardIndex === undefined) {
-        const c = (() => { try { return getCard(intent.cardId); } catch { return null; } })();
-        if (c?.abilities[0]?.kind === 'recur_from_discard') {
-          setDiscardSelectForCard(intent.cardId);
-          return;
-        }
+      const c = (() => { try { return getCard(intent.cardId); } catch { return null; } })();
+      if (c?.abilities[0]?.kind === 'recur_from_discard') {
+        setDiscardSelectForCard(intent.cardId);
+        return;
       }
       startItemPlayAnim(intent, dispatch); return;
     }
@@ -2580,8 +2577,13 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
                   <button
                     key={i}
                     onClick={() => {
-                      safeIntent({ type: 'play_item', cardId: discardSelectForCard, discardIndex: i });
+                      const intent: Intent = { type: 'play_item', cardId: discardSelectForCard, discardIndex: i };
                       setDiscardSelectForCard(null);
+                      startItemPlayAnim(intent, () => {
+                        try { onIntent(intent); } catch (e: unknown) {
+                          showError(e instanceof Error ? e.message : 'Illegal move');
+                        }
+                      });
                     }}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 12,

@@ -26,6 +26,9 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
   const [pendingEnemyAttack, setPendingEnemyAttack] = useState<Intent | null>(null);
   const [pendingEnemyPlay, setPendingEnemyPlay] = useState<Intent | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const lastWriteAtRef = useRef<string | null>(null);
+  const isBeamActiveRef = useRef(false);
+  const bufferedStateRef = useRef<GameState | null>(null);
 
   // Load initial state
   useEffect(() => {
@@ -38,6 +41,19 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
     });
   }, [matchId]);
 
+  // Sync beam-active ref; flush buffered state when beam ends
+  useEffect(() => {
+    isBeamActiveRef.current = pendingEnemyAttack !== null;
+    if (!pendingEnemyAttack && bufferedStateRef.current) {
+      const buffered = bufferedStateRef.current;
+      bufferedStateRef.current = null;
+      setGameState(buffered);
+      if (buffered.winner) {
+        onGameEnd(buffered.winner, buffered.players[buffered.winner].deck, buffered.players[myRole].deck);
+      }
+    }
+  }, [pendingEnemyAttack, myRole, onGameEnd]);
+
   // Realtime subscription
   useEffect(() => {
     const channel = supabase.channel(`match:${matchId}`)
@@ -48,6 +64,13 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
         const match = payload.new as Match;
         if (match.state) {
           const incoming = match.state as GameState;
+          // Skip own echo — we already applied this state locally
+          if (match.updated_at && match.updated_at === lastWriteAtRef.current) return;
+          // Buffer during beam animation to prevent CSS animation reset
+          if (isBeamActiveRef.current) {
+            bufferedStateRef.current = incoming;
+            return;
+          }
           setGameState(incoming);
           if (incoming.winner) {
             onGameEnd(incoming.winner, incoming.players[incoming.winner].deck, incoming.players[myRole].deck);
@@ -98,11 +121,13 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
       ? (newState.winner === 'p1' ? matchData.player1 : matchData.player2)
       : null;
 
+    const writeAt = new Date().toISOString();
+    lastWriteAtRef.current = writeAt;
     await supabase.from('matches').update({
       state: newState,
       status: newState.winner ? 'finished' : 'active',
       winner: winnerUuid,
-      updated_at: new Date().toISOString(),
+      updated_at: writeAt,
     }).eq('id', matchId);
 
     if (newState.winner) {
