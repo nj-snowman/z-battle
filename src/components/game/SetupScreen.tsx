@@ -10,6 +10,7 @@ export type GameMode = 'hotseat' | 'vs_ai';
 interface SetupScreenProps {
   onStart: (p1Deck: string, p2Deck: string, firstPlayer: PlayerId, mode: GameMode) => void;
   userEmail?: string | null;
+  isGuest?: boolean;
   onOpenFriends?: () => void;
   onPowerLevel?: () => void;
   onVsFriend?: () => void;
@@ -223,7 +224,7 @@ function LoadingScreen({ pending, onReady }: { pending: PendingGame; onReady: ()
   );
 }
 
-export default function SetupScreen({ onStart, userEmail, onOpenFriends, onPowerLevel, onVsFriend, onSignOut, onCacheImages, pendingFriendCount = 0, onlineFriendCount = 0 }: SetupScreenProps) {
+export default function SetupScreen({ onStart, userEmail, isGuest = false, onOpenFriends, onPowerLevel, onVsFriend, onSignOut, onCacheImages, pendingFriendCount = 0, onlineFriendCount = 0 }: SetupScreenProps) {
   const [screen, setScreen] = useState<'home' | 'setup' | 'loading'>('home');
   const [gameMode, setGameMode] = useState<GameMode>('vs_ai');
   const [p1Deck, setP1Deck] = useState<string | null>(null);
@@ -343,7 +344,7 @@ export default function SetupScreen({ onStart, userEmail, onOpenFriends, onPower
                 letterSpacing: 1,
               }}
             >
-              SIGN OUT
+              {isGuest ? 'SIGN IN' : 'SIGN OUT'}
             </button>
           )}
         </div>

@@ -16,7 +16,7 @@ const inputStyle: React.CSSProperties = {
   boxSizing: 'border-box',
 };
 
-export default function AuthScreen() {
+export default function AuthScreen({ onPlayOffline }: { onPlayOffline?: () => void }) {
   const [tab, setTab] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -127,6 +127,20 @@ export default function AuthScreen() {
       >
         {loading ? '...' : (tab === 'signin' ? 'SIGN IN' : 'CREATE ACCOUNT')}
       </button>
+
+      {onPlayOffline && (
+        <button
+          onClick={onPlayOffline}
+          style={{
+            width: '100%', background: 'transparent',
+            border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '14px',
+            cursor: 'pointer', fontFamily: 'Bangers, sans-serif', fontSize: 15,
+            color: 'var(--muted)', letterSpacing: 2, textTransform: 'uppercase',
+          }}
+        >
+          PLAY OFFLINE
+        </button>
+      )}
     </div>
   );
 }

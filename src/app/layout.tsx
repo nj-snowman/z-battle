@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Anton, Saira_Condensed, Saira, Bangers } from 'next/font/google';
+import Script from 'next/script';
 import './globals.css';
 
 const anton = Anton({
@@ -47,6 +48,9 @@ export const metadata: Metadata = {
     statusBarStyle: 'black-translucent',
     title: 'Z-Battle',
   },
+  icons: {
+    apple: '/icon-192.png',
+  },
   other: {
     'mobile-web-app-capable': 'yes',
   },
@@ -61,6 +65,11 @@ export default function RootLayout({
     <html lang="en" className={`${anton.variable} ${sairaCondensed.variable} ${saira.variable} ${bangers.variable}`}>
       <body>
         {children}
+        <Script id="sw-reg" strategy="afterInteractive">{`
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js');
+          }
+        `}</Script>
       </body>
     </html>
   );

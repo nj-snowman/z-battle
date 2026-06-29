@@ -38,6 +38,9 @@ const DECK_OPTIONS = [
 export default function AppContent() {
   const [screen, setScreen] = useState<Screen>('loading');
   const [user, setUser] = useState<User | null>(null);
+  const [isGuest, setIsGuest] = useState(false);
+  const isGuestRef = useRef(false);
+  useEffect(() => { isGuestRef.current = isGuest; }, [isGuest]);
 
   const [activeMatchId, setActiveMatchId] = useState<string | null>(null);
   const [myOnlineRole, setMyOnlineRole] = useState<PlayerId | null>(null);
@@ -84,6 +87,7 @@ export default function AppContent() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
       if (session?.user) {
         setUser(session.user);
+        setIsGuest(false);
         setScreen(s => {
           if (s === 'auth' || s === 'loading') {
             if (!hasImagesCached()) setShowCacheModal(true);
@@ -96,6 +100,7 @@ export default function AppContent() {
         setIncomingChallenge(null);
         setScreen(s => {
           if (s === 'game' || s === 'pass') return s;
+          if (isGuestRef.current) return s;
           return 'auth';
         });
       }
@@ -269,6 +274,12 @@ export default function AppContent() {
     setPendingSetup({ p1Deck, p2Deck, firstPlayer, mode });
   }
 
+  function handlePlayOffline() {
+    setIsGuest(true);
+    setScreen('setup');
+    if (!hasImagesCached()) setShowCacheModal(true);
+  }
+
   function handleScoutDone() {
     if (!pendingSetup) return;
     const { p1Deck, p2Deck, firstPlayer, mode } = pendingSetup;
@@ -322,7 +333,7 @@ export default function AppContent() {
         </div>
       )}
 
-      {screen === 'auth' && <AuthScreen />}
+      {screen === 'auth' && <AuthScreen onPlayOffline={handlePlayOffline} />}
 
       {screen === 'lobby' && user && (
         <LobbyScreen
@@ -382,13 +393,14 @@ export default function AppContent() {
         <SetupScreen
           onStart={handleSetupStart}
           userEmail={user?.email}
+          isGuest={isGuest}
           onOpenFriends={user ? () => setScreen('friends') : undefined}
           pendingFriendCount={pendingFriendCount}
           onlineFriendCount={onlineFriendCount}
           onPowerLevel={user ? () => setScreen('power_level') : undefined}
           onVsFriend={user ? () => setScreen('lobby') : undefined}
-          onSignOut={user ? () => supabase.auth.signOut() : undefined}
-          onCacheImages={user ? () => setShowCacheModal(true) : undefined}
+          onSignOut={isGuest ? () => { setIsGuest(false); setScreen('auth'); } : user ? () => supabase.auth.signOut() : undefined}
+          onCacheImages={() => setShowCacheModal(true)}
         />
       )}
 
