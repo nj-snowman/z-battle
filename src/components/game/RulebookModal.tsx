@@ -212,6 +212,7 @@ export default function RulebookModal({ onClose }: RulebookModalProps) {
         <Section title="Combat">
           <Rule>Only <strong>active fighters</strong> can attack. Each fighter can attack once per turn.</Rule>
           <Rule><strong>Damage = Attacker's ATK − Defender's DEF</strong> (minimum 500 damage per hit).</Rule>
+          <Rule><strong>Pure Damage</strong> (from certain items and ultimates) is dealt straight to HP, completely ignoring DEF.</Rule>
           <Rule>When a fighter's HP reaches 0 it is KO'd, removed from the board, and the attacker's player scores 1 KO.</Rule>
           <Rule>If your active fighter is KO'd and you have bench fighters, you must <strong>promote</strong> one to the active slot immediately.</Rule>
           <Rule>Some attacks cost extra Ki — check each fighter's card for their attack Ki cost.</Rule>
