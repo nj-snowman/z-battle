@@ -1,4 +1,4 @@
-const CACHE_NAME = 'z-battle-v1';
+const CACHE_NAME = 'z-battle-v2';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -22,6 +22,24 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   if (!event.request.url.startsWith(self.location.origin)) return;
+
+  const isNavigation = event.request.mode === 'navigate' || event.request.destination === 'document';
+
+  // App shell: always try the network first so new deploys are picked up
+  // immediately; fall back to cache only when offline.
+  if (isNavigation) {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          if (response && response.status === 200) {
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, response.clone()));
+          }
+          return response;
+        })
+        .catch(() => caches.open(CACHE_NAME).then(cache => cache.match(event.request)))
+    );
+    return;
+  }
 
   event.respondWith(
     caches.open(CACHE_NAME).then(cache =>
