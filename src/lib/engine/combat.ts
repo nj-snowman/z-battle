@@ -1,6 +1,6 @@
 import { GameState, PlayerId, PendingPromotion } from './types';
 import { getCard } from './cards';
-import { getEffectiveStats } from './buffs';
+import { getEffectiveStats, cardTypesOf } from './buffs';
 import { checkWinLoss } from './utils';
 
 // Produce a new state after a fighter at (side, slot, index) is KO'd.
@@ -55,7 +55,7 @@ export function resolveKo(
   }
 
   // Track Nappa Rampage: if a Saiyan was KO'd, mark for the player who LOST the Saiyan
-  if (card.fighterType === 'saiyan') {
+  if (cardTypesOf(card).has('saiyan')) {
     const updatedKoPlayer = { ...s.players[koDSide], friendlySaiyanKoedThisGame: true };
     s.players = { ...s.players, [koDSide]: updatedKoPlayer };
   }

@@ -116,7 +116,7 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
                 const f = slots[i];
                 if (!f) continue;
                 const fCard = getCard(f.cardId);
-                if (fCard.fighterType !== 'android') continue;
+                if (!cardTypesOf(fCard).has('android')) continue;
                 if (slot === 'active') {
                   // If multiple bench fighters exist, encode the promotion choice
                   const benchOptions = ps.bench
