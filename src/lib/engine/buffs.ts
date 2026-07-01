@@ -112,7 +112,7 @@ export function getEffectiveStats(
       if (!p.grantsToOtherActive) continue;
       if (evaluateCondition(p.condition ?? null, grantor, grantorSlot, grantorIdx, playerSide, state)) {
         const g = p.grantsToOtherActive as any;
-        if (p.requiresType && card.fighterType !== p.requiresType) continue;
+        if (p.requiresType && !cardTypesOf(card).has(p.requiresType)) continue;
         if (g.atk) atk += g.atk;
         if (g.def) def += g.def;
       }
@@ -178,7 +178,7 @@ export function evaluateCondition(
       for (let i = 0; i < actives.length; i++) {
         if (i === index && slot === 'active') continue;
         const other = actives[i];
-        if (other && getCard(other.cardId).fighterType === 'namekian') return true;
+        if (other && cardTypesOf(getCard(other.cardId)).has('namekian')) return true;
       }
       return false;
     }
@@ -187,7 +187,7 @@ export function evaluateCondition(
       for (let i = 0; i < actives.length; i++) {
         if (i === index && slot === 'active') continue;
         const other = actives[i];
-        if (other && getCard(other.cardId).fighterType === 'frieza_force') return true;
+        if (other && cardTypesOf(getCard(other.cardId)).has('frieza_force')) return true;
       }
       return false;
     }
