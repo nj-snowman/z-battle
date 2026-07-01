@@ -29,7 +29,7 @@ const DECK_OPTIONS = [
   { id: 'saiyan', name: 'Saiyan', color: '#ff7a18' },
   { id: 'namekian', name: 'Namekian', color: '#34c759' },
   { id: 'android', name: 'Android', color: '#3aa6ff' },
-  { id: 'human', name: 'Human', color: '#ffb648' },
+  { id: 'human', name: 'Earthling', color: '#ffb648' },
   { id: 'frieza_force', name: 'Frieza Force', color: '#b44dff' },
   { id: 'majin', name: 'Majin', color: '#f03fcc' },
 ];
