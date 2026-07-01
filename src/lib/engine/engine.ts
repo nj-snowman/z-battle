@@ -1,6 +1,6 @@
-import { GameState, Intent, PlayerId, SlotType } from './types';
+import { GameState, Intent, PlayerId, SlotType, FighterInstance } from './types';
 import { getCard } from './cards';
-import { getEffectiveStats } from './buffs';
+import { getEffectiveStats, cardTypesOf } from './buffs';
 import { resolveKo, applyDamageToFighter, resolveBasicAttack, promoteFromBench, promoteSpecific } from './combat';
 import { checkWinLoss } from './utils';
 import { makeFighterInstance } from './setup';
@@ -106,7 +106,7 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
         for (const ab of fieldCard.abilities) {
           if (ab.kind === 'field_type_buff') {
             const fp = ab.params as any;
-            if (fp.hp && card.fighterType === fp.type) {
+            if (fp.hp && cardTypesOf(card).has(fp.type)) {
               fighter = { ...fighter, maxHp: fighter.maxHp + fp.hp, currentHp: fighter.currentHp + fp.hp };
             }
           }
@@ -128,10 +128,20 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
         const newActives = [...player.actives] as typeof player.actives;
         newActives[intent.index] = fighter;
         player.actives = newActives;
+        if (card.subtype === 'buu') {
+          const counts = [...player.activeBuuCounts] as [number, number];
+          counts[intent.index] = 1;
+          player.activeBuuCounts = counts;
+        }
       } else {
         const newBench = [...player.bench] as typeof player.bench;
         newBench[intent.index] = fighter;
         player.bench = newBench;
+        if (card.subtype === 'buu') {
+          const counts = [...player.benchBuuCounts] as [number, number];
+          counts[intent.index] = 1;
+          player.benchBuuCounts = counts;
+        }
       }
 
       s = { ...s, players: { ...s.players, [tp]: player } };
@@ -157,6 +167,95 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
           }
         }
       }
+      break;
+    }
+
+    case 'evolve': {
+      if (s.phase !== 'main1' && s.phase !== 'main2') throw new Error('Cannot evolve now');
+      const card = getCard(intent.cardId);
+      if (card.cardType !== 'hero' || card.subtype !== 'buu') throw new Error('Not a Buu card');
+      const player = { ...s.players[tp] };
+      const handIdx = player.hand.indexOf(intent.cardId);
+      if (handIdx === -1) throw new Error('Card not in hand');
+
+      const slots = intent.slotSide === 'active' ? player.actives : player.bench;
+      const prev = slots[intent.slotIndex];
+      if (!prev) throw new Error('Slot is empty');
+      const prevCard = getCard(prev.cardId);
+      if (prevCard.subtype !== 'buu') throw new Error('Slot does not hold a Buu');
+      if ((card.buuStage ?? 0) <= (prevCard.buuStage ?? 0)) throw new Error('Must evolve to a higher Buu stage');
+
+      const buuCounts = intent.slotSide === 'active' ? player.activeBuuCounts : player.benchBuuCounts;
+      const slotBuuCount = buuCounts[intent.slotIndex];
+      const cost = Math.max(0, card.kiCost - slotBuuCount);
+      if (player.kiCurrent < cost) throw new Error('Not enough Ki');
+
+      player.hand = player.hand.filter((_, i) => i !== handIdx);
+      player.kiCurrent -= cost;
+
+      // Re-apply carried equipment's HP bonus to the new base HP — don't double-count against prev.maxHp.
+      let maxHp = card.hp!;
+      for (const itemId of prev.equipment) {
+        const item = getCard(itemId);
+        for (const ab of item.abilities) {
+          if (ab.kind === 'attach_stat') {
+            const ip = ab.params as any;
+            if (ip.hp) maxHp += ip.hp;
+          }
+        }
+      }
+      const damageTaken = prev.maxHp - prev.currentHp;
+      const currentHp = Math.max(1, maxHp - damageTaken);
+
+      // Counters: equipment-granted own-KO counters (e.g. Assimilate) carry; intrinsic counters (e.g. Absorb) reset.
+      const counters: Record<string, number> = {};
+      for (const itemId of prev.equipment) {
+        const item = getCard(itemId);
+        for (const ab of item.abilities) {
+          if (ab.kind === 'attach_trigger') {
+            const ip = ab.params as any;
+            if (ip.grants === 'triggered_on_ko' && ip.onlyOnOwnKo && prev.counters[ab.key] !== undefined) {
+              counters[ab.key] = prev.counters[ab.key];
+            }
+          }
+        }
+      }
+
+      const oncePerGameUsed: Record<string, boolean> = {};
+      for (const ab of card.abilities) {
+        if (ab.oncePerGame) oncePerGameUsed[ab.key] = false;
+      }
+
+      const newFighter: FighterInstance = {
+        cardId: intent.cardId,
+        maxHp,
+        currentHp,
+        equipment: prev.equipment,
+        summoningSick: true,
+        hasAttackedThisTurn: false,
+        oncePerGameUsed,
+        counters,
+        statuses: [],
+      };
+
+      if (intent.slotSide === 'active') {
+        const newActives = [...player.actives] as typeof player.actives;
+        newActives[intent.slotIndex] = newFighter;
+        player.actives = newActives;
+        const counts = [...player.activeBuuCounts] as [number, number];
+        counts[intent.slotIndex] = slotBuuCount + 1;
+        player.activeBuuCounts = counts;
+      } else {
+        const newBench = [...player.bench] as typeof player.bench;
+        newBench[intent.slotIndex] = newFighter;
+        player.bench = newBench;
+        const counts = [...player.benchBuuCounts] as [number, number];
+        counts[intent.slotIndex] = slotBuuCount + 1;
+        player.benchBuuCounts = counts;
+      }
+
+      // Not a KO — no score, no on-KO triggers. The old card just goes to discard.
+      s = { ...s, discard: [...s.discard, prev.cardId], players: { ...s.players, [tp]: player } };
       break;
     }
 
@@ -327,7 +426,7 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
       s = { ...s, players: { ...s.players, [tp]: { ...player, actives: newActives, kiCurrent: player.kiCurrent - 1 } } };
 
       // Apply ultimate effect
-      s = applyUltimate(s, tp, opponent, ultAb, intent.targetIndex);
+      s = applyUltimate(s, tp, opponent, ultAb, intent.targetIndex, intent.secondTargetIndex);
       s = checkWinLoss(s);
       break;
     }
@@ -335,12 +434,26 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
     case 'promote_from_bench': {
       const pending = s.pendingPromotions[0];
       if (!pending) throw new Error('No pending promotion');
-      const { side, activeIndex, friezaWrathPending } = pending;
+      const { side, activeIndex, friezaWrathPending, daburaStunPending } = pending;
       s = { ...s, pendingPromotions: s.pendingPromotions.slice(1) };
       s = promoteSpecific(s, side, activeIndex, intent.benchIndex);
       if (friezaWrathPending) {
         const promoted = s.players[side].actives[activeIndex];
         if (promoted) s = applyDamageToFighter(s, side, 'active', activeIndex, 2000);
+      }
+      if (daburaStunPending) {
+        const promoted = s.players[side].actives[activeIndex];
+        if (promoted) {
+          const player = { ...s.players[side] };
+          const newActives = [...player.actives] as typeof player.actives;
+          newActives[activeIndex] = {
+            ...promoted,
+            cannotAttackNextTurn: true,
+            statuses: [...promoted.statuses, { key: 'stun', until: 'their_next_turn' as const }],
+          };
+          player.actives = newActives;
+          s = { ...s, players: { ...s.players, [side]: player } };
+        }
       }
       s = checkWinLoss(s);
       break;
@@ -386,7 +499,7 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
   return s;
 }
 
-function applyUltimate(s: GameState, tp: PlayerId, opp: PlayerId, ab: any, targetIndex?: number): GameState {
+function applyUltimate(s: GameState, tp: PlayerId, opp: PlayerId, ab: any, targetIndex?: number, secondTargetIndex?: number): GameState {
   const p = ab.params as any;
   switch (ab.key) {
     case 'spirit_bomb':
@@ -462,6 +575,51 @@ function applyUltimate(s: GameState, tp: PlayerId, opp: PlayerId, ab: any, targe
       const newOppActives = [...oppPlayer.actives] as typeof oppPlayer.actives;
       newOppActives[targetIndex] = targetNewBody;
       s = { ...s, players: { ...s.players, [opp]: { ...oppPlayer, actives: newOppActives } } };
+      break;
+    }
+    case 'planet_burst': {
+      // Bypasses bench protection — the only effect that damages Bench fighters.
+      // Resolve bench KOs before actives so a promotion queued by an active's death sees the final bench state.
+      const benchTargets = s.players[opp].bench.map((f, i) => (f ? i : -1)).filter(i => i !== -1);
+      for (const i of benchTargets) {
+        if (s.players[opp].bench[i]) s = applyDamageToFighter(s, opp, 'bench', i, p.damage, tp);
+      }
+      const activeTargets = s.players[opp].actives.map((f, i) => (f ? i : -1)).filter(i => i !== -1);
+      for (const i of activeTargets) {
+        if (s.players[opp].actives[i]) s = applyDamageToFighter(s, opp, 'active', i, p.damage, tp);
+      }
+      break;
+    }
+    case 'manipulation': {
+      if (targetIndex === undefined || secondTargetIndex === undefined) throw new Error('Manipulation requires two targets');
+      const attacker = s.players[opp].actives[targetIndex];
+      const defender = s.players[opp].actives[secondTargetIndex];
+      if (!attacker || !defender) break;
+      const attackerStats = getEffectiveStats(attacker, 'active', targetIndex, opp, s);
+      const defenderStats = getEffectiveStats(defender, 'active', secondTargetIndex, opp, s);
+      const dmg = Math.max(attackerStats.atk - defenderStats.def, 1000);
+      // No attackerIndex — this is a forced one-way attack, not Super Buu's own, so Absorb never triggers.
+      s = applyDamageToFighter(s, opp, 'active', secondTargetIndex, dmg, tp);
+      break;
+    }
+    case 'self_destruct_mv': {
+      if (targetIndex === undefined) throw new Error('Self-destruct requires target');
+      const player = s.players[tp];
+      const fighterIdx = player.actives.findIndex(f => f && f.cardId === 'majin_vegeta');
+      if (fighterIdx !== -1) {
+        s = resolveKo(s, tp, 'active', fighterIdx, opp);
+      }
+      s = applyDamageToFighter(s, opp, 'active', targetIndex, p.damage, tp);
+      break;
+    }
+    case 'creation': {
+      // targetIndex doubles as the chosen discard-pile index for this ultimate.
+      if (targetIndex === undefined) break;
+      const discardIdx = targetIndex;
+      if (discardIdx < 0 || discardIdx >= s.discard.length) break;
+      const returned = s.discard[discardIdx];
+      const newDiscard = s.discard.filter((_, i) => i !== discardIdx);
+      s = { ...s, discard: newDiscard, players: { ...s.players, [tp]: { ...s.players[tp], hand: [...s.players[tp].hand, returned] } } };
       break;
     }
     case 'self_destruct_16': {
@@ -574,6 +732,21 @@ function applyItemAbility(
       s = checkWinLoss(s);
       break;
     }
+    case 'stun': {
+      if (targetIndex === undefined) break;
+      const oppPlayer = { ...s.players[opp] };
+      const oppActives = [...oppPlayer.actives] as typeof oppPlayer.actives;
+      const target = oppActives[targetIndex];
+      if (!target) break;
+      oppActives[targetIndex] = {
+        ...target,
+        cannotAttackNextTurn: true,
+        statuses: [...target.statuses, { key: 'stun', until: 'their_next_turn' as const }],
+      };
+      oppPlayer.actives = oppActives;
+      s = { ...s, players: { ...s.players, [opp]: oppPlayer } };
+      break;
+    }
     case 'delayed_damage': {
       // Death Saucer: deal damage now, if target survives, deal follow-up next turn
       if (targetIndex === undefined) break;
@@ -592,7 +765,15 @@ function applyItemAbility(
       const player = { ...s.players[tp] };
       const newPiles = { ...player.piles };
       let newHand = [...player.hand];
-      if (drawChoices && drawChoices.length > 0) {
+      if (p.heroOnly) {
+        let drawn = 0;
+        while (drawn < p.draw && newPiles.hero.length > 0) {
+          const [drawnCard, ...rest] = newPiles.hero;
+          newPiles.hero = rest;
+          newHand = [...newHand, drawnCard];
+          drawn++;
+        }
+      } else if (drawChoices && drawChoices.length > 0) {
         for (const pile of drawChoices) {
           if (newPiles[pile].length > 0) {
             const [drawnCard, ...rest] = newPiles[pile];
@@ -661,7 +842,7 @@ function applyItemAbility(
       const player = { ...s.players[tp] };
       const discardIdx = discardIndex ?? s.discard.findIndex(id => {
         const c = getCard(id);
-        return c.cardType === 'hero' && c.fighterType === p.type;
+        return c.cardType === 'hero' && cardTypesOf(c).has(p.type);
       });
       if (discardIdx !== -1 && discardIdx < s.discard.length) {
         const returned = s.discard[discardIdx];
@@ -689,13 +870,13 @@ function applyFieldEntryEffects(s: GameState, fieldId: string): GameState {
         player.actives = player.actives.map(f => {
           if (!f) return null;
           const c = getCard(f.cardId);
-          if (c.fighterType !== p.type) return f;
+          if (!cardTypesOf(c).has(p.type)) return f;
           return { ...f, maxHp: f.maxHp + p.hp, currentHp: f.currentHp + p.hp };
         }) as typeof player.actives;
         player.bench = player.bench.map(f => {
           if (!f) return null;
           const c = getCard(f.cardId);
-          if (c.fighterType !== p.type) return f;
+          if (!cardTypesOf(c).has(p.type)) return f;
           return { ...f, maxHp: f.maxHp + p.hp, currentHp: f.currentHp + p.hp };
         }) as typeof player.bench;
         s = { ...s, players: { ...s.players, [side]: player } };
@@ -768,12 +949,12 @@ function processEndOfTurn(s: GameState): GameState {
         const p = ab.params as any;
         player.actives = player.actives.map(f => {
           if (!f) return null;
-          if (getCard(f.cardId).fighterType !== p.type) return f;
+          if (!cardTypesOf(getCard(f.cardId)).has(p.type)) return f;
           return { ...f, currentHp: Math.min(f.currentHp + p.heal, f.maxHp) };
         }) as typeof player.actives;
         player.bench = player.bench.map(f => {
           if (!f) return null;
-          if (getCard(f.cardId).fighterType !== p.type) return f;
+          if (!cardTypesOf(getCard(f.cardId)).has(p.type)) return f;
           return { ...f, currentHp: Math.min(f.currentHp + p.heal, f.maxHp) };
         }) as typeof player.bench;
       } else if (ab.kind === 'field_type_buff') {
@@ -782,12 +963,12 @@ function processEndOfTurn(s: GameState): GameState {
         if (p.healEndOfTurn) {
           player.actives = player.actives.map(f => {
             if (!f) return null;
-            if (getCard(f.cardId).fighterType !== p.type) return f;
+            if (!cardTypesOf(getCard(f.cardId)).has(p.type)) return f;
             return { ...f, currentHp: Math.min(f.currentHp + p.healEndOfTurn, f.maxHp) };
           }) as typeof player.actives;
           player.bench = player.bench.map(f => {
             if (!f) return null;
-            if (getCard(f.cardId).fighterType !== p.type) return f;
+            if (!cardTypesOf(getCard(f.cardId)).has(p.type)) return f;
             return { ...f, currentHp: Math.min(f.currentHp + p.healEndOfTurn, f.maxHp) };
           }) as typeof player.bench;
         }

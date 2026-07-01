@@ -85,6 +85,8 @@ const p1: PlayerState = {
   retreatUsedThisTurn: false,
   turnNumber: 5,
   friendlySaiyanKoedThisGame: false,
+  activeBuuCounts: [0, 0],
+  benchBuuCounts: [0, 0],
 };
 
 const p2: PlayerState = {
@@ -100,6 +102,8 @@ const p2: PlayerState = {
   retreatUsedThisTurn: false,
   turnNumber: 4,
   friendlySaiyanKoedThisGame: false,
+  activeBuuCounts: [0, 0],
+  benchBuuCounts: [0, 0],
 };
 
 export const mockState: GameState = {

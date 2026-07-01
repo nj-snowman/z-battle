@@ -1,5 +1,17 @@
-import { FighterInstance, GameState, PlayerId } from './types';
+import { FighterInstance, GameState, PlayerId, CardDef } from './types';
 import { getCard } from './cards';
+
+export function cardTypesOf(card: CardDef): Set<string> {
+  return new Set(card.types ?? (card.fighterType ? [card.fighterType] : []));
+}
+
+export function typesOf(fighter: FighterInstance): Set<string> {
+  return cardTypesOf(getCard(fighter.cardId));
+}
+
+export function isType(fighter: FighterInstance, t: string): boolean {
+  return typesOf(fighter).has(t);
+}
 
 export interface EffectiveStats {
   atk: number;
@@ -56,12 +68,33 @@ export function getEffectiveStats(
     }
   }
 
-  // Permanent counters
+  // Permanent counters (key = the ability's own key, e.g. 'legendary', 'fifth_form', 'pure_evil')
   for (const ab of card.abilities) {
     if (ab.kind === 'permanent_counter') {
       const p = ab.params as any;
-      if (p.atkPerKo) atk += (fighter.counters['legendary'] ?? 0) * p.atkPerKo;
-      if (p.defPerTurn) def += (fighter.counters['fifth_form'] ?? 0) * p.defPerTurn;
+      if (p.atkPerKo) atk += (fighter.counters[ab.key] ?? 0) * p.atkPerKo;
+      if (p.defPerTurn) def += (fighter.counters[ab.key] ?? 0) * p.defPerTurn;
+    }
+  }
+
+  // Absorb-style stacking ATK from own-KO triggers (Super Buu's Absorb)
+  for (const ab of card.abilities) {
+    if (ab.kind === 'triggered_on_ko') {
+      const p = ab.params as any;
+      if (p.onlyOnOwnKo && p.atkPerKo) atk += (fighter.counters[ab.key] ?? 0) * p.atkPerKo;
+    }
+  }
+
+  // Equipment-granted own-KO stacking ATK (Assimilate)
+  for (const itemId of fighter.equipment) {
+    const item = getCard(itemId);
+    for (const ab of item.abilities) {
+      if (ab.kind === 'attach_trigger') {
+        const p = ab.params as any;
+        if (p.grants === 'triggered_on_ko' && p.onlyOnOwnKo && p.atkPerKo) {
+          atk += (fighter.counters[ab.key] ?? 0) * p.atkPerKo;
+        }
+      }
     }
   }
 
@@ -108,7 +141,7 @@ export function getEffectiveStats(
         if (p.allFighters?.atk) atk += p.allFighters.atk;
       } else if (ab.kind === 'field_type_buff') {
         const p = ab.params as any;
-        if (p.type === card.fighterType) {
+        if (cardTypesOf(card).has(p.type)) {
           if (p.atk) atk += p.atk;
           if (p.def) def += p.def;
         }

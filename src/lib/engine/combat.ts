@@ -40,6 +40,20 @@ export function resolveKo(
   koPlayer = { ...s.players[koDSide], koScoredAgainst: s.players[koDSide].koScoredAgainst + 1 };
   s.players = { ...s.players, [koDSide]: koPlayer };
 
+  // The Buu evolve chain is gone once its slot empties via a KO — a future hard-cast starts fresh
+  if (card.subtype === 'buu') {
+    if (slot === 'active') {
+      const counts = [...koPlayer.activeBuuCounts] as [number, number];
+      counts[index] = 0;
+      koPlayer = { ...koPlayer, activeBuuCounts: counts };
+    } else {
+      const counts = [...koPlayer.benchBuuCounts] as [number, number];
+      counts[index] = 0;
+      koPlayer = { ...koPlayer, benchBuuCounts: counts };
+    }
+    s.players = { ...s.players, [koDSide]: koPlayer };
+  }
+
   // Track Nappa Rampage: if a Saiyan was KO'd, mark for the player who LOST the Saiyan
   if (card.fighterType === 'saiyan') {
     const updatedKoPlayer = { ...s.players[koDSide], friendlySaiyanKoedThisGame: true };
@@ -63,6 +77,9 @@ export function resolveKo(
   // Trigger Cell Bio-Absorption: heal when Cell scores a KO
   s = triggerBioAbsorption(s, attackerSide);
 
+  // Trigger Super Buu's Absorb / Assimilate: stacking ATK when THIS fighter scores a KO
+  s = triggerAbsorb(s, attackerSide, attackerIndex);
+
   // Queue a pending promotion instead of auto-promoting — lets the player choose which bench card to send in.
   // Emperor's Wrath damage fires after the player confirms their choice (handled in promote_from_bench).
   if (slot === 'active' && !skipAutoPromote) {
@@ -72,6 +89,7 @@ export function resolveKo(
         side: koDSide,
         activeIndex: index,
         friezaWrathPending: hasFriezaWrathTrigger(s, attackerSide, attackerIndex),
+        daburaStunPending: hasDaburaStunTrigger(s, attackerSide, attackerIndex),
       };
       s = { ...s, pendingPromotions: [...s.pendingPromotions, entry] };
     }
@@ -80,41 +98,90 @@ export function resolveKo(
   return s;
 }
 
+function hasDaburaStunTrigger(s: GameState, attackerSide: PlayerId, attackerIndex?: number): boolean {
+  if (attackerIndex === undefined) return false;
+  const attacker = s.players[attackerSide].actives[attackerIndex];
+  return !!attacker && attacker.cardId === 'dabura';
+}
+
+function triggerAbsorb(s: GameState, scoringSide: PlayerId, attackerIndex?: number): GameState {
+  if (attackerIndex === undefined) return s;
+  const player = s.players[scoringSide];
+  const f = player.actives[attackerIndex];
+  if (!f) return s;
+
+  const card = getCard(f.cardId);
+  const counters = { ...f.counters };
+  let changed = false;
+
+  for (const ab of card.abilities) {
+    if (ab.kind === 'triggered_on_ko') {
+      const p = ab.params as any;
+      if (p.onlyOnOwnKo && p.atkPerKo) {
+        counters[ab.key] = (counters[ab.key] ?? 0) + 1;
+        changed = true;
+      }
+    }
+  }
+
+  for (const itemId of f.equipment) {
+    const item = getCard(itemId);
+    for (const ab of item.abilities) {
+      if (ab.kind === 'attach_trigger') {
+        const p = ab.params as any;
+        if (p.grants === 'triggered_on_ko' && p.onlyOnOwnKo && p.atkPerKo) {
+          counters[ab.key] = (counters[ab.key] ?? 0) + 1;
+          changed = true;
+        }
+      }
+    }
+  }
+
+  if (changed) {
+    const newActives = [...player.actives] as typeof player.actives;
+    newActives[attackerIndex] = { ...f, counters };
+    s = { ...s, players: { ...s.players, [scoringSide]: { ...player, actives: newActives } } };
+  }
+  return s;
+}
+
 function triggerLegendaryCounters(s: GameState): GameState {
-  // Broly gets +500 ATK per KO — stored in counters.legendary
+  // Broly gets +500 ATK per KO (counters[ab.key]); Kid Buu's Pure Evil also grows maxHp/currentHp per KO
   for (const side of ['p1', 'p2'] as PlayerId[]) {
     let player = s.players[side];
+
+    const bump = (f: NonNullable<typeof player.actives[0]>) => {
+      const card = getCard(f.cardId);
+      let updated = f;
+      for (const ab of card.abilities) {
+        if (ab.kind !== 'permanent_counter') continue;
+        const p = ab.params as any;
+        if (p.trigger !== 'any_ko') continue;
+        if (p.atkPerKo) {
+          updated = { ...updated, counters: { ...updated.counters, [ab.key]: (updated.counters[ab.key] ?? 0) + 1 } };
+        }
+        if (p.hpPerKo) {
+          updated = { ...updated, maxHp: updated.maxHp + p.hpPerKo, currentHp: updated.currentHp + p.hpPerKo };
+        }
+      }
+      return updated;
+    };
+
     const newActives = [...player.actives] as typeof player.actives;
     let activesChanged = false;
     for (let i = 0; i < player.actives.length; i++) {
       const f = player.actives[i];
       if (!f) continue;
-      const card = getCard(f.cardId);
-      for (const ab of card.abilities) {
-        if (ab.kind === 'permanent_counter') {
-          const p = ab.params as any;
-          if (p.atkPerKo) {
-            newActives[i] = { ...f, counters: { ...f.counters, legendary: (f.counters.legendary ?? 0) + 1 } };
-            activesChanged = true;
-          }
-        }
-      }
+      const updated = bump(f);
+      if (updated !== f) { newActives[i] = updated; activesChanged = true; }
     }
     const newBench = [...player.bench] as typeof player.bench;
     let benchChanged = false;
     for (let i = 0; i < player.bench.length; i++) {
       const f = player.bench[i];
       if (!f) continue;
-      const card = getCard(f.cardId);
-      for (const ab of card.abilities) {
-        if (ab.kind === 'permanent_counter') {
-          const p = ab.params as any;
-          if (p.atkPerKo) {
-            newBench[i] = { ...f, counters: { ...f.counters, legendary: (f.counters.legendary ?? 0) + 1 } };
-            benchChanged = true;
-          }
-        }
-      }
+      const updated = bump(f);
+      if (updated !== f) { newBench[i] = updated; benchChanged = true; }
     }
     if (activesChanged || benchChanged) {
       player = {

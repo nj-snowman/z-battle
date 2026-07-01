@@ -35,6 +35,8 @@ export interface PlayerState {
   retreatUsedThisTurn: boolean;
   turnNumber: number; // this player's own turn count (for Ki curve)
   friendlySaiyanKoedThisGame: boolean; // for Nappa Rampage
+  activeBuuCounts: [number, number]; // Buu evolve-chain depth per active slot; resets to 0 when the slot empties via KO
+  benchBuuCounts: [number, number]; // same, for bench slots
 }
 
 export interface LogEntry {
@@ -47,6 +49,7 @@ export interface PendingPromotion {
   side: PlayerId;
   activeIndex: number;
   friezaWrathPending: boolean;
+  daburaStunPending?: boolean;
 }
 
 export interface GameState {
@@ -77,6 +80,9 @@ export interface CardDef {
   name: string;
   cardType: 'hero' | 'item' | 'field';
   fighterType?: string;
+  types?: string[]; // present only on dual-type cards (e.g. Majin Vegeta: ["majin","saiyan"])
+  subtype?: string; // e.g. "buu" for the Buu evolve chain
+  buuStage?: number; // 1..4, present on the four Buu chain cards
   tier?: 'basic' | 'mid' | 'high';
   kiCost: number;
   hp?: number;
@@ -97,7 +103,8 @@ export type Intent =
   | { type: 'play_field'; cardId: string }
   | { type: 'retreat'; activeIndex: number; benchIndex: number }
   | { type: 'attack'; attackerIndex: number; targetIndex: number; useKaioken?: boolean; useOneShotAbility?: boolean; useTriBeam?: boolean }
-  | { type: 'ultimate'; fighterIndex: number; targetIndex?: number }
+  | { type: 'ultimate'; fighterIndex: number; targetIndex?: number; secondTargetIndex?: number }
+  | { type: 'evolve'; cardId: string; slotSide: SlotType; slotIndex: number }
   | { type: 'sacrifice'; side: SlotType; index: number }
   | { type: 'promote_from_bench'; benchIndex: number }
   | { type: 'advance_phase' }

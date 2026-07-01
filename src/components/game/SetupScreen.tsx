@@ -21,7 +21,7 @@ interface SetupScreenProps {
   onlineFriendCount?: number;
 }
 
-const DECK_IDS = ['saiyan', 'namekian', 'android', 'human', 'frieza_force'];
+const DECK_IDS = ['saiyan', 'namekian', 'android', 'human', 'frieza_force', 'majin'];
 
 const DECK_OPTIONS = [
   { id: 'saiyan', name: 'Saiyan', color: '#ff7a18' },
@@ -29,6 +29,7 @@ const DECK_OPTIONS = [
   { id: 'android', name: 'Android', color: '#3aa6ff' },
   { id: 'human', name: 'Human', color: '#ffb648' },
   { id: 'frieza_force', name: 'Frieza Force', color: '#b44dff' },
+  { id: 'majin', name: 'Majin', color: '#f03fcc' },
 ];
 
 function getDeckImages(deckId: string): string[] {
@@ -87,7 +88,7 @@ function DeckPicker({
             width: 10,
             height: 10,
             borderRadius: '50%',
-            background: 'conic-gradient(#ff7a18 0% 20%, #34c759 20% 40%, #3aa6ff 40% 60%, #ffb648 60% 80%, #b44dff 80% 100%)',
+            background: 'conic-gradient(#ff7a18 0% 16.67%, #34c759 16.67% 33.33%, #3aa6ff 33.33% 50%, #ffb648 50% 66.67%, #b44dff 66.67% 83.33%, #f03fcc 83.33% 100%)',
             flexShrink: 0,
           }} />
           <span style={{

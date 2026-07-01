@@ -1,6 +1,6 @@
 import { GameState, PlayerId, Intent } from './types';
 import { getCard } from './cards';
-import { getEffectiveStats } from './buffs';
+import { getEffectiveStats, isType, cardTypesOf } from './buffs';
 
 export function legalMoves(state: GameState, player: PlayerId): Intent[] {
   if (state.winner) return [];
@@ -54,6 +54,27 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
 
       if (canDeployActiveHero) break;
 
+      // Evolve — a Buu card cast onto a slot that already holds a lower-stage Buu, at a discount
+      for (const cardId of ps.hand) {
+        const card = getCard(cardId);
+        if (card.cardType !== 'hero' || card.subtype !== 'buu') continue;
+        for (const slotSide of ['active', 'bench'] as const) {
+          const slots = slotSide === 'active' ? ps.actives : ps.bench;
+          const buuCounts = slotSide === 'active' ? ps.activeBuuCounts : ps.benchBuuCounts;
+          for (let i = 0; i < slots.length; i++) {
+            const cur = slots[i];
+            if (!cur) continue;
+            const curCard = getCard(cur.cardId);
+            if (curCard.subtype !== 'buu') continue;
+            if ((card.buuStage ?? 0) <= (curCard.buuStage ?? 0)) continue;
+            const cost = Math.max(0, card.kiCost - buuCounts[i]);
+            if (ps.kiCurrent >= cost) {
+              moves.push({ type: 'evolve', cardId, slotSide, slotIndex: i });
+            }
+          }
+        }
+      }
+
       // Play items
       for (const cardId of ps.hand) {
         const card = getCard(cardId);
@@ -69,7 +90,7 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
                 if (slots[i]) moves.push({ type: 'play_item', cardId, targetSide: slot, targetIndex: i });
               }
             }
-          } else if (abKind === 'direct_damage' || abKind === 'delayed_damage') {
+          } else if (abKind === 'direct_damage' || abKind === 'delayed_damage' || abKind === 'stun') {
             for (let i = 0; i < oppState.actives.length; i++) {
               if (oppState.actives[i]) moves.push({ type: 'play_item', cardId, targetIndex: i });
             }
@@ -79,7 +100,7 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
             const type = (card.abilities[0].params as any).type;
             state.discard.forEach((id, discardIndex) => {
               const c = getCard(id);
-              if (c.cardType === 'hero' && c.fighterType === type) {
+              if (c.cardType === 'hero' && cardTypesOf(c).has(type)) {
                 moves.push({ type: 'play_item', cardId, discardIndex });
               }
             });
@@ -130,7 +151,8 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
               if (!f) continue;
               if (f.equipment.length >= 2) continue;
               const fCard = getCard(f.cardId);
-              if (p.restrictType && fCard.fighterType !== p.restrictType) continue;
+              if (p.restrictType && !isType(f, p.restrictType)) continue;
+              if (p.restrictSubtype && fCard.subtype !== p.restrictSubtype) continue;
               if (p.requiresTargetCondition === 'at_or_below_half_hp' && f.currentHp > f.maxHp / 2) continue;
               moves.push({ type: 'play_item', cardId, targetSide: slot, targetIndex: i });
             }
@@ -198,12 +220,31 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
         const ult = card.abilities.find(ab => ab.kind === 'ultimate' || ab.kind === 'activated_one_shot');
         if (ult && !f.oncePerGameUsed[ult.key] && ps.kiCurrent >= 1) {
           const p = ult.params as any;
-          if (p.target === 'all_enemy_actives') {
+          if (p.target === 'all_enemy_actives' || p.target === 'all_enemy_fighters_including_bench') {
             moves.push({ type: 'ultimate', fighterIndex: i });
           } else if (p.target === 'one_enemy_active') {
             for (let ti = 0; ti < oppState.actives.length; ti++) {
               if (oppState.actives[ti]) moves.push({ type: 'ultimate', fighterIndex: i, targetIndex: ti });
             }
+          } else if (p.target === 'manipulation') {
+            const activeIdxs = oppState.actives
+              .map((f2, idx) => (f2 ? idx : -1))
+              .filter((idx) => idx !== -1);
+            if (activeIdxs.length >= (p.minEnemyActives ?? 2)) {
+              for (const a of activeIdxs) {
+                for (const b of activeIdxs) {
+                  if (a === b) continue;
+                  moves.push({ type: 'ultimate', fighterIndex: i, targetIndex: a, secondTargetIndex: b });
+                }
+              }
+            }
+          } else if (p.target === 'creation') {
+            state.discard.forEach((id, discardIdx) => {
+              const c = getCard(id);
+              if (c.cardType === 'hero' && cardTypesOf(c).has(p.type)) {
+                moves.push({ type: 'ultimate', fighterIndex: i, targetIndex: discardIdx });
+              }
+            });
           }
         }
       }

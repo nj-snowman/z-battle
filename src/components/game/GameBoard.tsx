@@ -35,7 +35,9 @@ type SelectionMode =
   | { mode: 'ultimate_target_select'; fighterIndex: number }
   | { mode: 'chiaotzu_stun_select'; handIdx: number; cardId: string; slot: 'active' | 'bench'; index: number }
   | { mode: 'self_destruct_enemy_select'; handIdx: number; cardId: string; sacrificeSide: 'active' | 'bench'; sacrificeIndex: number }
-  | { mode: 'self_destruct_bench_select'; handIdx: number; cardId: string; sacrificeSide: 'active' | 'bench'; sacrificeIndex: number; enemyTargetIndex: number };
+  | { mode: 'self_destruct_bench_select'; handIdx: number; cardId: string; sacrificeSide: 'active' | 'bench'; sacrificeIndex: number; enemyTargetIndex: number }
+  | { mode: 'manipulation_select_a'; fighterIndex: number }
+  | { mode: 'manipulation_select_b'; fighterIndex: number; targetIndexA: number };
 
 interface PendingAttack {
   attackerIndex: number;
@@ -166,6 +168,8 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
   const [revealedOppHand, setRevealedOppHand] = useState<string[] | null>(null);
   // Dragon Clan Ritual: discard card choice
   const [discardSelectForCard, setDiscardSelectForCard] = useState<string | null>(null);
+  // Bibidi's Creation: which friendly fighter is using the ultimate, awaiting a discard-pile pick
+  const [creationSelectForFighter, setCreationSelectForFighter] = useState<number | null>(null);
   // Capsule Corp: multi-draw pile selection
   const [multiDrawSelect, setMultiDrawSelect] = useState<{
     cardId: string;
@@ -445,7 +449,15 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     android: '#22c55e',
     namekian: '#6d28d9',
     frieza_force: '#ff4fa3',
+    majin: '#f03fcc',
   };
+
+  function beamColorFor(card: ReturnType<typeof getCard> | null): string {
+    if (!card) return '#ff7a18';
+    // Dual-type (Majin Vegeta): use the Saiyan beam rather than the Majin one
+    if (card.types?.includes('saiyan')) return BEAM_COLORS.saiyan;
+    return BEAM_COLORS[card.fighterType ?? ''] ?? '#ff7a18';
+  }
 
   function dispatchAttackWithBeam(intent: Intent) {
     setSelection({ mode: 'idle' });
@@ -469,8 +481,8 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
         beamData = {
           attackerPos: { x: aR.left + aR.width / 2 - boardRect.left, y: aR.top + aR.height / 2 - boardRect.top },
           defenderPos: { x: dR.left + dR.width / 2 - boardRect.left, y: dR.top + dR.height / 2 - boardRect.top },
-          attackerColor: BEAM_COLORS[attackerCard?.fighterType ?? ''] ?? '#ff7a18',
-          defenderColor: BEAM_COLORS[defenderCard?.fighterType ?? ''] ?? '#3aa6ff',
+          attackerColor: beamColorFor(attackerCard),
+          defenderColor: beamColorFor(defenderCard),
         };
       }
     }
@@ -507,8 +519,8 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
       beamData = {
         attackerPos: { x: aR.left + aR.width / 2 - boardRect.left, y: aR.top + aR.height / 2 - boardRect.top },
         defenderPos: { x: dR.left + dR.width / 2 - boardRect.left, y: dR.top + dR.height / 2 - boardRect.top },
-        attackerColor: BEAM_COLORS[attackerCard?.fighterType ?? ''] ?? '#3aa6ff',
-        defenderColor: BEAM_COLORS[defenderCard?.fighterType ?? ''] ?? '#ff7a18',
+        attackerColor: beamColorFor(attackerCard),
+        defenderColor: beamColorFor(defenderCard),
       };
     }
 
@@ -714,8 +726,8 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
           const beamData: BeamStruggleData = {
             attackerPos: { x: aR.left + aR.width / 2 - boardRect.left, y: aR.top + aR.height / 2 - boardRect.top },
             defenderPos: { x: dR.left + dR.width / 2 - boardRect.left, y: dR.top + dR.height / 2 - boardRect.top },
-            attackerColor: BEAM_COLORS[attackerCard?.fighterType ?? ''] ?? '#ff7a18',
-            defenderColor: BEAM_COLORS[defenderCard?.fighterType ?? ''] ?? '#3aa6ff',
+            attackerColor: beamColorFor(attackerCard),
+            defenderColor: beamColorFor(defenderCard),
             isUltimate: true,
           };
           setBeamStruggle(beamData);
@@ -955,6 +967,17 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
       return;
     }
 
+    if (selection.mode === 'manipulation_select_a' && isOpponent && side === 'active') {
+      setSelection({ mode: 'manipulation_select_b', fighterIndex: selection.fighterIndex, targetIndexA: index });
+      return;
+    }
+
+    if (selection.mode === 'manipulation_select_b' && isOpponent && side === 'active' && index !== selection.targetIndexA) {
+      safeIntent({ type: 'ultimate', fighterIndex: selection.fighterIndex, targetIndex: selection.targetIndexA, secondTargetIndex: index });
+      setSelection({ mode: 'idle' });
+      return;
+    }
+
     if (selection.mode === 'attacker_selected' && isOpponent && side === 'active') {
       const attacker = myPlayer.actives[selection.attackerIdx];
       if (!attacker) return;
@@ -1028,7 +1051,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
       if (isOpponent) {
         if (card.cardType === 'item') {
           const abKind = card.abilities[0]?.kind;
-          if (abKind === 'direct_damage' || abKind === 'delayed_damage') {
+          if (abKind === 'direct_damage' || abKind === 'delayed_damage' || abKind === 'stun') {
             safeIntent({ type: 'play_item', cardId, targetIndex: index });
             setSelection({ mode: 'idle' });
             return;
@@ -1056,7 +1079,12 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
           setSelection({ mode: 'idle' });
           return;
         }
-        // Occupied slot — clear selection and fall through to fighter zoom
+        // Occupied slot — evolving a Buu onto an existing Buu is legal; otherwise fall through to zoom
+        if (card.subtype === 'buu' && moves.some(m => m.type === 'evolve' && m.cardId === cardId && m.slotSide === side && m.slotIndex === index)) {
+          safeIntent({ type: 'evolve', cardId, slotSide: side, slotIndex: index });
+          setSelection({ mode: 'idle' });
+          return;
+        }
         setSelection({ mode: 'idle' });
       } else if (card.cardType === 'item') {
         const abKind = card.abilities[0]?.kind;
@@ -1155,7 +1183,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     if (isOpp) {
       if (card.cardType === 'item') {
         const abKind = card.abilities[0]?.kind;
-        if (abKind === 'direct_damage' || abKind === 'delayed_damage') {
+        if (abKind === 'direct_damage' || abKind === 'delayed_damage' || abKind === 'stun') {
           safeIntent({ type: 'play_item', cardId: d.cardId, targetIndex: index });
         }
       }
@@ -1164,7 +1192,12 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
 
     if (card.cardType === 'hero') {
       const fighter = slot === 'active' ? myPlayer.actives[index] : myPlayer.bench[index];
-      if (fighter !== null) return false;
+      if (fighter !== null) {
+        if (card.subtype === 'buu' && moves.some(m => m.type === 'evolve' && m.cardId === d.cardId && m.slotSide === slot && m.slotIndex === index)) {
+          safeIntent({ type: 'evolve', cardId: d.cardId, slotSide: slot, slotIndex: index });
+        }
+        return false;
+      }
       const isChiaotzu = card.abilities.some(
         ab => ab.kind === 'triggered_on_play' && (ab.params as Record<string, unknown>)['effect'] === 'stun'
       );
@@ -1246,6 +1279,8 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     for (const m of moves) {
       if (m.type === 'play_hero' && m.cardId === cardId) {
         result.add(`${m.slot}-${m.index}-own`);
+      } else if (m.type === 'evolve' && m.cardId === cardId) {
+        result.add(`${m.slotSide}-${m.slotIndex}-own`);
       } else if (m.type === 'play_item') {
         if (m.cardId !== cardId) continue;
         if (m.targetSide !== undefined && m.targetIndex !== undefined) {
@@ -1284,6 +1319,22 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
       )
     : new Set<number>();
 
+  const manipulationATargets = selection.mode === 'manipulation_select_a'
+    ? new Set(
+        moves
+          .filter((m) => m.type === 'ultimate' && m.fighterIndex === selection.fighterIndex && m.targetIndex !== undefined)
+          .map((m) => (m as Extract<Intent, { type: 'ultimate' }>).targetIndex!)
+      )
+    : new Set<number>();
+
+  const manipulationBTargets = selection.mode === 'manipulation_select_b'
+    ? new Set(
+        moves
+          .filter((m) => m.type === 'ultimate' && m.fighterIndex === selection.fighterIndex && m.targetIndex === selection.targetIndexA)
+          .map((m) => (m as Extract<Intent, { type: 'ultimate' }>).secondTargetIndex!)
+      )
+    : new Set<number>();
+
   const retreatBenchTargets = selection.mode === 'retreat_select'
     ? new Set(
         moves
@@ -1317,8 +1368,8 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
 
   const playableCards = new Set(
     moves
-      .filter((m) => m.type === 'play_hero' || m.type === 'play_item' || m.type === 'play_field')
-      .map((m) => (m as Extract<Intent, { type: 'play_hero' | 'play_item' | 'play_field' }>).cardId)
+      .filter((m) => m.type === 'play_hero' || m.type === 'play_item' || m.type === 'play_field' || m.type === 'evolve')
+      .map((m) => (m as Extract<Intent, { type: 'play_hero' | 'play_item' | 'play_field' | 'evolve' }>).cardId)
   );
 
   const handToShow = myPlayer.hand;
@@ -1872,6 +1923,87 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
         );
       })()}
 
+      {/* Discard picker (Bibidi's Creation) */}
+      {creationSelectForFighter !== null && (() => {
+        const fighterIndex = creationSelectForFighter;
+        const eligibleDiscardIdxs = new Set(
+          moves
+            .filter((m) => m.type === 'ultimate' && m.fighterIndex === fighterIndex && m.targetIndex !== undefined)
+            .map((m) => (m as Extract<Intent, { type: 'ultimate' }>).targetIndex!)
+        );
+        const eligible = state.discard
+          .map((id, i) => ({ id, i }))
+          .filter(({ i }) => eligibleDiscardIdxs.has(i));
+        return (
+          <div
+            onClick={() => setCreationSelectForFighter(null)}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 500,
+              background: 'rgba(0,0,0,0.88)',
+              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              className="sheet-rise"
+              style={{
+                width: '100%', maxWidth: 430,
+                background: 'var(--panel)', borderRadius: '16px 16px 0 0',
+                padding: 'max(20px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom))',
+                display: 'flex', flexDirection: 'column', gap: 12,
+              }}
+            >
+              <div style={{ fontFamily: 'Bangers, sans-serif', fontSize: 17, color: 'var(--ki)', letterSpacing: 2, textTransform: 'uppercase', textAlign: 'center' }}>
+                Return which fighter?
+              </div>
+              <div style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, textAlign: 'center' }}>
+                Choose a KO'd Majin to return to your hand
+              </div>
+              {eligible.map(({ id, i }) => {
+                const c = (() => { try { return getCard(id); } catch { return null; } })();
+                return (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      setCreationSelectForFighter(null);
+                      safeIntent({ type: 'ultimate', fighterIndex, targetIndex: i });
+                    }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '10px 14px', borderRadius: 10,
+                      border: '1.5px solid var(--ki)',
+                      background: 'rgba(255,122,24,0.08)',
+                      cursor: 'pointer', textAlign: 'left',
+                    }}
+                  >
+                    {c?.image && (
+                      <img src={`/${c.image}`} alt={c.name ?? id} style={{ width: 40, height: 56, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }} />
+                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span style={{ fontFamily: 'Bangers, sans-serif', fontSize: 15, color: 'var(--ink)', letterSpacing: 1 }}>{c?.name ?? id}</span>
+                      <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        {c?.kiCost ?? 0} Ki · {c?.hp?.toLocaleString() ?? '?'} HP · ATK {c?.atk?.toLocaleString() ?? '?'}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+              <button
+                onClick={() => setCreationSelectForFighter(null)}
+                style={{
+                  padding: '8px 24px', borderRadius: 8,
+                  border: '1px solid var(--line)', background: 'transparent',
+                  color: 'var(--muted)', fontFamily: 'Saira Condensed, sans-serif',
+                  fontSize: 12, letterSpacing: 1, textTransform: 'uppercase', cursor: 'pointer',
+                }}
+              >
+                CANCEL
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Win / loss overlay — Dragon Radar style */}
       {state.winner && (
         <div style={{
@@ -2023,7 +2155,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
           </div>
           <div style={{ display: 'flex', justifyContent: 'center', gap: 4 }}>
             {oppPlayer.actives.map((f, i) => {
-              const isTarget = validAttackTargets.has(i) || chiaotzuStunTargets.has(i) || ultTargets.has(i) || sdEnemyTargets.has(i);
+              const isTarget = validAttackTargets.has(i) || chiaotzuStunTargets.has(i) || ultTargets.has(i) || sdEnemyTargets.has(i) || manipulationATargets.has(i) || manipulationBTargets.has(i);
               const isOppPlay = validPlaySlots.has(`active-${i}-opp`);
               return (
                 <div key={i} data-slot="fighter" data-subslot="active" data-index={i} data-opp="true" style={{ position: 'relative' }}>
@@ -2396,6 +2528,8 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
           const canUltimate = side === 'active' && state.phase === 'battle' &&
             moves.some(m => m.type === 'ultimate' && m.fighterIndex === idx);
           if (canUltimate) {
+            const ownCard = f ? (() => { try { return getCard(f.cardId); } catch { return null; } })() : null;
+            const ultKey = ownCard?.abilities.find(ab => ab.kind === 'ultimate' || ab.kind === 'activated_one_shot')?.key;
             const ultimateNeedsTarget = moves.some(
               m => m.type === 'ultimate' && m.fighterIndex === idx && m.targetIndex !== undefined
             );
@@ -2404,7 +2538,11 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
               variant: 'primary',
               needsConfirm: !ultimateNeedsTarget,
               onClick: () => {
-                if (ultimateNeedsTarget) {
+                if (ultKey === 'manipulation') {
+                  setSelection({ mode: 'manipulation_select_a', fighterIndex: idx });
+                } else if (ultKey === 'creation') {
+                  setCreationSelectForFighter(idx);
+                } else if (ultimateNeedsTarget) {
                   setSelection({ mode: 'ultimate_target_select', fighterIndex: idx });
                 } else {
                   safeIntent({ type: 'ultimate', fighterIndex: idx });

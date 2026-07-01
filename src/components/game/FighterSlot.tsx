@@ -27,6 +27,7 @@ const TYPE_GRADIENTS: Record<string, string> = {
   android: 'linear-gradient(135deg, #0d1520, #1a2d45)',
   earthling: 'linear-gradient(135deg, #1a1505, #3d3510)',
   frieza_force: 'linear-gradient(135deg, #150d20, #2d1a45)',
+  majin: 'linear-gradient(135deg, #1a0820, #3d1040)',
 };
 
 const TYPE_ACCENT: Record<string, string> = {
@@ -35,6 +36,16 @@ const TYPE_ACCENT: Record<string, string> = {
   android: '#3aa6ff',
   earthling: '#ffb648',
   frieza_force: '#b44dff',
+  majin: '#f03fcc',
+};
+
+const TYPE_LABEL: Record<string, string> = {
+  saiyan: 'SAIYAN',
+  namekian: 'NAMEKIAN',
+  android: 'ANDROID',
+  earthling: 'EARTHLING',
+  frieza_force: 'FRIEZA FORCE',
+  majin: 'MAJIN',
 };
 
 function formatStat(n: number): string {
@@ -426,6 +437,31 @@ export default function FighterSlot({
                   boxShadow: '0 0 4px var(--item)',
                 }}
               />
+            ))}
+          </div>
+        )}
+
+        {/* Dual-type badge (e.g. Majin Vegeta: Majin + Saiyan) */}
+        {card?.types && card.types.length > 1 && (
+          <div style={{
+            position: 'absolute',
+            top: 4,
+            right: 4,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-end',
+            gap: 1,
+            zIndex: 3,
+          }}>
+            {card.types.map((t) => (
+              <span key={t} style={{
+                fontFamily: 'Saira Condensed, sans-serif', fontSize: 6, fontWeight: 700,
+                color: '#fff', background: `${TYPE_ACCENT[t] ?? accent}cc`,
+                borderRadius: 2, padding: '1px 3px',
+                textTransform: 'uppercase', letterSpacing: 0.3,
+              }}>
+                {TYPE_LABEL[t] ?? t}
+              </span>
             ))}
           </div>
         )}
