@@ -19,3 +19,5 @@ export const DECKS = (cardsData as any).decks as Record<string, {
 
 export const CONSTANTS = (cardsData as any).meta.constants;
 
+export const ALL_CARDS = (cardsData as any).cards as CardDef[];
+

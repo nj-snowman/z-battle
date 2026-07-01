@@ -592,12 +592,12 @@ describe('Equipment limit', () => {
 describe('Majin — Buu evolve chain', () => {
   it('V-M1: evolve cost ladder and buuCount progression', () => {
     let s = makeState({ phase: 'main1' });
-    s.players.p1.hand = ['mr_buu'];
+    s.players.p1.hand = ['evil_buu'];
     s.players.p1.kiCurrent = 1;
-    s = applyIntent(s, { type: 'play_hero', cardId: 'mr_buu', slot: 'active', index: 0 });
+    s = applyIntent(s, { type: 'play_hero', cardId: 'evil_buu', slot: 'active', index: 0 });
     expect(s.players.p1.kiCurrent).toBe(0); // hard-cast pays full 1 Ki
     expect(s.players.p1.activeBuuCounts[0]).toBe(1);
-    expect(s.players.p1.actives[0]?.cardId).toBe('mr_buu');
+    expect(s.players.p1.actives[0]?.cardId).toBe('evil_buu');
 
     s.players.p1.hand = ['majin_buu_fat'];
     s.players.p1.kiCurrent = 2;
@@ -684,7 +684,7 @@ describe('Majin — Kid Buu Planet Burst', () => {
 
     s.players.p2.actives[0] = { ...makeFighterInstance('pui_pui'), currentHp: 2000 };
     s.players.p2.actives[1] = { ...makeFighterInstance('yakon'), currentHp: 1500 };
-    s.players.p2.bench[0] = { ...makeFighterInstance('mr_buu'), currentHp: 2000 };
+    s.players.p2.bench[0] = { ...makeFighterInstance('evil_buu'), currentHp: 2000 };
     s.players.p2.bench[1] = { ...makeFighterInstance('babidi'), maxHp: 6000, currentHp: 6000 };
 
     s = applyIntent(s, { type: 'ultimate', fighterIndex: 0 });
