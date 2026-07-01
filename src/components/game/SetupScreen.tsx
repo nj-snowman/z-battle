@@ -2,13 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 import type { PlayerId } from '@/lib/engine/types';
+import type { Difficulty } from '@/lib/engine/aiTypes';
 import { DECKS, getCard } from '@/lib/engine/cards';
 import RulebookModal from './RulebookModal';
 
 export type GameMode = 'hotseat' | 'vs_ai';
 
 interface SetupScreenProps {
-  onStart: (p1Deck: string, p2Deck: string, firstPlayer: PlayerId, mode: GameMode) => void;
+  onStart: (p1Deck: string, p2Deck: string, firstPlayer: PlayerId, mode: GameMode, difficulty: Difficulty) => void;
   userEmail?: string | null;
   isGuest?: boolean;
   onOpenFriends?: () => void;
@@ -150,6 +151,7 @@ interface PendingGame {
   p2Deck: string;
   firstPlayer: PlayerId;
   mode: GameMode;
+  difficulty: Difficulty;
 }
 
 function LoadingScreen({ pending, onReady }: { pending: PendingGame; onReady: () => void }) {
@@ -230,6 +232,7 @@ export default function SetupScreen({ onStart, userEmail, isGuest = false, onOpe
   const [p1Deck, setP1Deck] = useState<string | null>(null);
   const [p2Deck, setP2Deck] = useState<string | null>('random');
   const [firstPlayer, setFirstPlayer] = useState<PlayerId | null>(null);
+  const [difficulty, setDifficulty] = useState<Difficulty>('hard');
   const [showRulebook, setShowRulebook] = useState(false);
   const [pendingGame, setPendingGame] = useState<PendingGame | null>(null);
 
@@ -244,7 +247,7 @@ export default function SetupScreen({ onStart, userEmail, isGuest = false, onOpe
   function handleStart() {
     if (!p1Deck || !p2Deck || !firstPlayer) return;
     const resolved = resolveP2Deck(p2Deck);
-    const game: PendingGame = { p1Deck, p2Deck: resolved, firstPlayer, mode: gameMode };
+    const game: PendingGame = { p1Deck, p2Deck: resolved, firstPlayer, mode: gameMode, difficulty };
     setPendingGame(game);
     setScreen('loading');
   }
@@ -253,7 +256,7 @@ export default function SetupScreen({ onStart, userEmail, isGuest = false, onOpe
     return (
       <LoadingScreen
         pending={pendingGame}
-        onReady={() => onStart(pendingGame.p1Deck, pendingGame.p2Deck, pendingGame.firstPlayer, pendingGame.mode)}
+        onReady={() => onStart(pendingGame.p1Deck, pendingGame.p2Deck, pendingGame.firstPlayer, pendingGame.mode, pendingGame.difficulty)}
       />
     );
   }
@@ -766,6 +769,67 @@ export default function SetupScreen({ onStart, userEmail, isGuest = false, onOpe
           })}
         </div>
       </div>
+
+      {/* AI difficulty */}
+      {gameMode === 'vs_ai' && (
+        <div style={{
+          background: 'var(--panel)',
+          border: '1px solid var(--line)',
+          borderRadius: 12,
+          padding: '16px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+        }}>
+          <span style={{
+            fontFamily: 'Bangers, sans-serif',
+            fontSize: 13,
+            color: 'var(--muted)',
+            letterSpacing: 1,
+            textTransform: 'uppercase',
+            textAlign: 'center',
+          }}>
+            AI Difficulty
+          </span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {([
+              { id: 'medium' as Difficulty, label: 'NORMAL' },
+              { id: 'hard' as Difficulty, label: 'HARD' },
+              { id: 'strongest' as Difficulty, label: 'STRONGEST' },
+            ]).map(({ id, label }) => {
+              const isSelected = difficulty === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => setDifficulty(id)}
+                  title={id === 'strongest' ? 'Strongest of the Universe' : undefined}
+                  style={{
+                    flex: 1,
+                    background: isSelected
+                      ? 'linear-gradient(135deg, var(--ki), var(--ki2))'
+                      : 'rgba(255,255,255,0.04)',
+                    border: isSelected
+                      ? '2px solid var(--ki)'
+                      : '1.5px solid rgba(255,255,255,0.1)',
+                    borderRadius: 8,
+                    padding: '12px 6px',
+                    cursor: 'pointer',
+                    fontFamily: 'Bangers, sans-serif',
+                    fontSize: 12,
+                    color: isSelected ? '#0d0f14' : 'var(--muted)',
+                    letterSpacing: 0.5,
+                    textTransform: 'uppercase' as const,
+                    transition: 'all 0.15s',
+                    boxShadow: isSelected ? '0 4px 16px rgba(255,122,24,0.4)' : 'none',
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Start */}
       <button

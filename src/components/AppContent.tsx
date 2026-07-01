@@ -4,7 +4,8 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { User } from '@supabase/supabase-js';
 import type { GameState, Intent, PlayerId } from '@/lib/engine/types';
 import { applyIntent, createInitialState } from '@/lib/engine';
-import { chooseMove } from '@/lib/engine/ai';
+import { chooseMove, chooseAiPromotion } from '@/lib/engine/ai';
+import type { Difficulty } from '@/lib/engine/aiTypes';
 import { supabase } from '@/lib/supabase/client';
 import type { Match } from '@/lib/supabase/types';
 import AuthScreen from '@/components/auth/AuthScreen';
@@ -49,11 +50,12 @@ export default function AppContent() {
   const gameStateRef = useRef<GameState | null>(null);
   useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
   const [aiPlayer, setAiPlayer] = useState<PlayerId | null>(null);
+  const [aiDifficulty, setAiDifficulty] = useState<Difficulty>('hard');
   const [currentGameMode, setCurrentGameMode] = useState<GameMode>('hotseat');
   const [winnerState, setWinnerState] = useState<{ winner: PlayerId; deck: string } | null>(null);
   const [showCacheModal, setShowCacheModal] = useState(false);
   const [pendingSetup, setPendingSetup] = useState<{
-    p1Deck: string; p2Deck: string; firstPlayer: PlayerId; mode: GameMode;
+    p1Deck: string; p2Deck: string; firstPlayer: PlayerId; mode: GameMode; difficulty: Difficulty;
   } | null>(null);
   const [pendingAiAttack, setPendingAiAttack] = useState<Intent | null>(null);
   const [pendingAiPlay, setPendingAiPlay] = useState<Intent | null>(null);
@@ -216,8 +218,7 @@ export default function AppContent() {
 
     if (aiPlayer) {
       while (!newState.winner && newState.pendingPromotions.length > 0 && newState.pendingPromotions[0].side === aiPlayer) {
-        const bench = newState.players[aiPlayer].bench;
-        const benchIdx = bench.findIndex(f => f !== null);
+        const benchIdx = chooseAiPromotion(newState, aiPlayer, aiDifficulty);
         if (benchIdx === -1) break;
         newState = applyIntent(newState, { type: 'promote_from_bench', benchIndex: benchIdx });
       }
@@ -247,7 +248,7 @@ export default function AppContent() {
         setScreen('pass');
       }
     }
-  }, [aiPlayer, user]);
+  }, [aiPlayer, aiDifficulty, user]);
 
   useEffect(() => {
     if (!aiPlayer || screen !== 'game' || !gameState) return;
@@ -256,7 +257,7 @@ export default function AppContent() {
     if (pendingAiAttack || pendingAiPlay) return;
     if (gameState.pendingPromotions.length > 0) return;
     const timer = setTimeout(() => {
-      const move = chooseMove(gameState, aiPlayer);
+      const move = chooseMove(gameState, aiPlayer, aiDifficulty);
       if (move) {
         if (move.type === 'attack') {
           setPendingAiAttack(move);
@@ -268,10 +269,10 @@ export default function AppContent() {
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [aiPlayer, screen, gameState, handleIntent, pendingAiAttack, pendingAiPlay]);
+  }, [aiPlayer, aiDifficulty, screen, gameState, handleIntent, pendingAiAttack, pendingAiPlay]);
 
-  function handleSetupStart(p1Deck: string, p2Deck: string, firstPlayer: PlayerId, mode: GameMode) {
-    setPendingSetup({ p1Deck, p2Deck, firstPlayer, mode });
+  function handleSetupStart(p1Deck: string, p2Deck: string, firstPlayer: PlayerId, mode: GameMode, difficulty: Difficulty) {
+    setPendingSetup({ p1Deck, p2Deck, firstPlayer, mode, difficulty });
   }
 
   function handlePlayOffline() {
@@ -282,12 +283,13 @@ export default function AppContent() {
 
   function handleScoutDone() {
     if (!pendingSetup) return;
-    const { p1Deck, p2Deck, firstPlayer, mode } = pendingSetup;
+    const { p1Deck, p2Deck, firstPlayer, mode, difficulty } = pendingSetup;
     const state = createInitialState(p1Deck, p2Deck, firstPlayer);
     setGameState(state);
     setCurrentGameMode(mode);
     const ai = mode === 'vs_ai' ? AI_PLAYER : null;
     setAiPlayer(ai);
+    setAiDifficulty(difficulty);
     setPendingSetup(null);
     setScreen(ai ? 'game' : 'pass');
   }
