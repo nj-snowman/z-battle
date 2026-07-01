@@ -712,13 +712,20 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
       setItemAnimPhase('exit');
 
       if (intent.targetIndex !== undefined) {
-        const aEl = board.querySelector(`[data-subslot="active"][data-index="${intent.fighterIndex}"][data-opp="false"]`);
-        const dEl = board.querySelector(`[data-subslot="active"][data-index="${intent.targetIndex}"][data-opp="true"]`);
+        // Manipulation (Babidi) forces one enemy Active to attack another — the
+        // struggle happens entirely on the opponent's side, not from our caster.
+        const isManipulation = intent.secondTargetIndex !== undefined;
+        const aEl = isManipulation
+          ? board.querySelector(`[data-subslot="active"][data-index="${intent.targetIndex}"][data-opp="true"]`)
+          : board.querySelector(`[data-subslot="active"][data-index="${intent.fighterIndex}"][data-opp="false"]`);
+        const dEl = isManipulation
+          ? board.querySelector(`[data-subslot="active"][data-index="${intent.secondTargetIndex}"][data-opp="true"]`)
+          : board.querySelector(`[data-subslot="active"][data-index="${intent.targetIndex}"][data-opp="true"]`);
         if (aEl && dEl) {
           const aR = aEl.getBoundingClientRect();
           const dR = dEl.getBoundingClientRect();
-          const attackerFighter = myPlayer.actives[intent.fighterIndex];
-          const defenderFighter = oppPlayer.actives[intent.targetIndex];
+          const attackerFighter = isManipulation ? oppPlayer.actives[intent.targetIndex] : myPlayer.actives[intent.fighterIndex];
+          const defenderFighter = isManipulation ? oppPlayer.actives[intent.secondTargetIndex!] : oppPlayer.actives[intent.targetIndex];
           let attackerCard: ReturnType<typeof getCard> | null = null;
           let defenderCard: ReturnType<typeof getCard> | null = null;
           try { attackerCard = attackerFighter ? getCard(attackerFighter.cardId) : null; } catch { attackerCard = null; }
