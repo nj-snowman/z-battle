@@ -281,6 +281,19 @@ button {
   100% { opacity: 0;   transform: translate(var(--sdx), var(--sdy)); }
 }
 
+/* Chain beam: Piccolo's Special Beam Cannon punching through to the bench slot behind the target */
+@keyframes chain-beam-fire {
+  0%   { stroke-dashoffset: var(--tlen); opacity: 1; }
+  55%  { stroke-dashoffset: 0; opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 0; }
+}
+
+@keyframes chain-impact-pop {
+  0%   { opacity: 0; transform: scale(0.4); }
+  35%  { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.35); }
+}
+
 /* Safe area padding utilities */
 .safe-bottom {
   padding-bottom: max(12px, env(safe-area-inset-bottom));

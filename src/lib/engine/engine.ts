@@ -515,12 +515,22 @@ function applyUltimate(s: GameState, tp: PlayerId, opp: PlayerId, ab: any, targe
       }
       break;
     }
-    case 'final_flash':
+    case 'final_flash': {
+      if (targetIndex === undefined) throw new Error('Ultimate requires target');
+      const target = s.players[opp].actives[targetIndex];
+      if (!target) throw new Error('No target');
+      s = applyDamageToFighter(s, opp, 'active', targetIndex, p.damage, tp);
+      break;
+    }
     case 'special_beam_cannon': {
       if (targetIndex === undefined) throw new Error('Ultimate requires target');
       const target = s.players[opp].actives[targetIndex];
       if (!target) throw new Error('No target');
       s = applyDamageToFighter(s, opp, 'active', targetIndex, p.damage, tp);
+      // Chain to the bench slot directly behind the target, if occupied.
+      if (s.players[opp].bench[targetIndex]) {
+        s = applyDamageToFighter(s, opp, 'bench', targetIndex, p.secondaryDamage, tp);
+      }
       break;
     }
     case 'supernova': {
@@ -603,13 +613,19 @@ function applyUltimate(s: GameState, tp: PlayerId, opp: PlayerId, ab: any, targe
       break;
     }
     case 'self_destruct_mv': {
-      if (targetIndex === undefined) throw new Error('Self-destruct requires target');
       const player = s.players[tp];
       const fighterIdx = player.actives.findIndex(f => f && f.cardId === 'majin_vegeta');
       if (fighterIdx !== -1) {
         s = resolveKo(s, tp, 'active', fighterIdx, opp);
       }
-      s = applyDamageToFighter(s, opp, 'active', targetIndex, p.damage, tp);
+      const targets = s.players[opp].actives
+        .map((f, i) => (f ? i : null))
+        .filter((i): i is number => i !== null);
+      for (const i of [...targets]) {
+        if (s.players[opp].actives[i]) {
+          s = applyDamageToFighter(s, opp, 'active', i, p.damage, tp);
+        }
+      }
       break;
     }
     case 'creation': {

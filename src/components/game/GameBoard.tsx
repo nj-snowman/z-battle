@@ -237,6 +237,14 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
   };
   const [beamStruggle, setBeamStruggle] = useState<BeamStruggleData | null>(null);
   const beamTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  type ChainBeamData = {
+    startPos: { x: number; y: number };
+    endPos: { x: number; y: number };
+    color: string;
+  };
+  const [chainBeam, setChainBeam] = useState<ChainBeamData | null>(null);
+  const chainBeamTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; }, [state]);
   const boardRef = useRef<HTMLDivElement>(null);
@@ -534,6 +542,10 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingEnemyAttack]);
 
+  useEffect(() => {
+    return () => { if (chainBeamTimerRef.current) clearTimeout(chainBeamTimerRef.current); };
+  }, []);
+
   // ---- Enemy item/field play animation (AI plays a card) ----
   useEffect(() => {
     if (!pendingEnemyPlay || (pendingEnemyPlay.type !== 'play_item' && pendingEnemyPlay.type !== 'play_field')) return;
@@ -731,11 +743,36 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
             isUltimate: true,
           };
           setBeamStruggle(beamData);
+
+          // Piccolo's Special Beam Cannon chains through to the bench slot directly behind the target.
+          let chainBeamData: ChainBeamData | null = null;
+          if (cardId === 'piccolo' && oppPlayer.bench[intent.targetIndex]) {
+            const bEl = board.querySelector(`[data-subslot="bench"][data-index="${intent.targetIndex}"][data-opp="true"]`);
+            if (bEl) {
+              const bR = bEl.getBoundingClientRect();
+              chainBeamData = {
+                startPos: beamData.defenderPos,
+                endPos: { x: bR.left + bR.width / 2 - boardRect.left, y: bR.top + bR.height / 2 - boardRect.top },
+                color: beamData.attackerColor,
+              };
+            }
+          }
+
           if (beamTimerRef.current) clearTimeout(beamTimerRef.current);
           beamTimerRef.current = setTimeout(() => {
             setBeamStruggle(null);
-            if (stateRef.current.turnPlayer === perspectiveId) pendingCardDispatch.current?.();
-            pendingCardDispatch.current = null;
+            if (chainBeamData) {
+              setChainBeam(chainBeamData);
+              if (chainBeamTimerRef.current) clearTimeout(chainBeamTimerRef.current);
+              chainBeamTimerRef.current = setTimeout(() => {
+                setChainBeam(null);
+                if (stateRef.current.turnPlayer === perspectiveId) pendingCardDispatch.current?.();
+                pendingCardDispatch.current = null;
+              }, 550);
+            } else {
+              if (stateRef.current.turnPlayer === perspectiveId) pendingCardDispatch.current?.();
+              pendingCardDispatch.current = null;
+            }
           }, 1500);
         } else {
           if (stateRef.current.turnPlayer === perspectiveId) pendingCardDispatch.current?.();
@@ -1591,6 +1628,45 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
               />
               <circle cx={midX} cy={midY} r={10} fill={ac}
                 style={{ '--sdx': `${sparkDx}px`, '--sdy': `${sparkDy}px`, animation: 'beam-spark-follow 1.5s ease-in-out forwards' } as React.CSSProperties}
+              />
+            </svg>
+          </div>
+        );
+      })()}
+
+      {/* Chain beam overlay — Special Beam Cannon punching through to the bench slot behind the target */}
+      {chainBeam && (() => {
+        const { startPos, endPos, color } = chainBeam;
+        const dx = endPos.x - startPos.x;
+        const dy = endPos.y - startPos.y;
+        const totalLen = Math.sqrt(dx * dx + dy * dy);
+        return (
+          <div style={{ position: 'absolute', inset: 0, zIndex: 300, pointerEvents: 'none' }}>
+            <svg style={{ position: 'absolute', inset: 0, overflow: 'visible' }} width="100%" height="100%">
+              <defs>
+                <filter id="cb-glow" x="-80%" y="-80%" width="260%" height="260%">
+                  <feGaussianBlur stdDeviation="8" result="blur"/>
+                  <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                </filter>
+              </defs>
+              <line x1={startPos.x} y1={startPos.y} x2={endPos.x} y2={endPos.y}
+                stroke={color} strokeWidth="46" strokeLinecap="round" strokeOpacity="0.35"
+                filter="url(#cb-glow)"
+                style={{ strokeDasharray: totalLen, '--tlen': totalLen, animation: 'chain-beam-fire 0.55s ease-out forwards' } as React.CSSProperties}
+              />
+              <line x1={startPos.x} y1={startPos.y} x2={endPos.x} y2={endPos.y}
+                stroke={color} strokeWidth="24" strokeLinecap="round" strokeOpacity="0.75"
+                style={{ strokeDasharray: totalLen, '--tlen': totalLen, animation: 'chain-beam-fire 0.55s ease-out forwards' } as React.CSSProperties}
+              />
+              <line x1={startPos.x} y1={startPos.y} x2={endPos.x} y2={endPos.y}
+                stroke="white" strokeWidth="8" strokeLinecap="round"
+                style={{ strokeDasharray: totalLen, '--tlen': totalLen, animation: 'chain-beam-fire 0.55s ease-out forwards' } as React.CSSProperties}
+              />
+              <circle cx={endPos.x} cy={endPos.y} r={30} fill="white"
+                style={{ animation: 'chain-impact-pop 0.4s ease-out 0.4s forwards', opacity: 0 } as React.CSSProperties}
+              />
+              <circle cx={endPos.x} cy={endPos.y} r={16} fill={color}
+                style={{ animation: 'chain-impact-pop 0.4s ease-out 0.4s forwards', opacity: 0 } as React.CSSProperties}
               />
             </svg>
           </div>
