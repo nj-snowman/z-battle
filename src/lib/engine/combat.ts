@@ -34,7 +34,10 @@ export function resolveKo(
   s.players = { ...s.players, [koDSide]: koPlayer };
 
   // Discard fighter + equipment
-  s.discard = [...s.discard, fighter.cardId, ...fighter.equipment];
+  s.discard = [
+    ...s.discard,
+    ...[fighter.cardId, ...fighter.equipment].map((cardId) => ({ cardId, owner: koDSide })),
+  ];
 
   // Increment koScoredAgainst for the KO'd player
   koPlayer = { ...s.players[koDSide], koScoredAgainst: s.players[koDSide].koScoredAgainst + 1 };
@@ -293,7 +296,7 @@ export function applyDamageToFighter(
     const prevented = Math.min(actualDamage, 2000);
     actualDamage -= prevented;
     newEquipment = newEquipment.filter((_, i) => i !== barrierIdx);
-    s = { ...s, discard: [...s.discard, 'barrier_field'] };
+    s = { ...s, discard: [...s.discard, { cardId: 'barrier_field', owner: side }] };
   }
 
   const newHp = Math.max(0, fighter.currentHp - actualDamage);

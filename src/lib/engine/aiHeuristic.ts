@@ -199,8 +199,8 @@ export function chooseMoveHeuristic(state: GameState, player: PlayerId): Intent 
         const recurMoves = utilItems.filter(m => getCard(m.cardId).abilities[0]?.kind === 'recur_from_discard');
         if (recurMoves.length > 0) {
           return recurMoves.reduce((best, m) => {
-            const bestCard = m.discardIndex !== undefined ? getCard(state.discard[m.discardIndex]) : null;
-            const curCard = best.discardIndex !== undefined ? getCard(state.discard[best.discardIndex]) : null;
+            const bestCard = m.discardIndex !== undefined ? getCard(state.discard[m.discardIndex].cardId) : null;
+            const curCard = best.discardIndex !== undefined ? getCard(state.discard[best.discardIndex].cardId) : null;
             return (bestCard?.kiCost ?? 0) > (curCard?.kiCost ?? 0) ? m : best;
           });
         }

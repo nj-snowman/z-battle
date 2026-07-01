@@ -466,25 +466,38 @@ export default function FighterSlot({
           </div>
         )}
 
-        {/* Legendary counter badge */}
-        {(fighter.counters['legendary'] ?? 0) > 0 && (
-          <div style={{
-            position: 'absolute',
-            top: 4,
-            left: 4,
-            background: 'var(--ki)',
-            borderRadius: 8,
-            padding: '1px 4px',
-            zIndex: 3,
-            transform: 'none',
-          }}>
-            <span style={{
-              fontFamily: 'Saira Condensed, sans-serif', fontSize: 7, fontWeight: 700, color: '#0d0f14',
+        {/* Permanent counter badge (Broly, Cooler, Kid Buu, etc.) */}
+        {card && (() => {
+          const segments: string[] = [];
+          for (const ab of card.abilities) {
+            if (ab.kind !== 'permanent_counter') continue;
+            const count = fighter.counters[ab.key] ?? 0;
+            if (count <= 0) continue;
+            const p = ab.params as any;
+            if (p.atkPerKo) segments.push(`+${count * p.atkPerKo / 1000}k`);
+            if (p.defPerTurn) segments.push(`+${count * p.defPerTurn / 1000}k`);
+            if (p.hpPerKo) segments.push(`+${count * p.hpPerKo / 1000}k`);
+          }
+          if (segments.length === 0) return null;
+          return (
+            <div style={{
+              position: 'absolute',
+              top: 4,
+              left: 4,
+              background: 'var(--ki)',
+              borderRadius: 8,
+              padding: '1px 4px',
+              zIndex: 3,
+              transform: 'none',
             }}>
-              +{fighter.counters['legendary'] * 500 / 1000}k
-            </span>
-          </div>
-        )}
+              <span style={{
+                fontFamily: 'Saira Condensed, sans-serif', fontSize: 7, fontWeight: 700, color: '#0d0f14',
+              }}>
+                {segments.join('/')}
+              </span>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Floating damage number */}

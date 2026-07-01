@@ -950,7 +950,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
         const abKind = c?.abilities[0]?.kind;
         if (abKind === 'reveal_and_draw') {
           setPileSelectForCard(cardId);
-        } else if (abKind === 'draw') {
+        } else if (abKind === 'draw' && !(c?.abilities[0]?.params as any)?.heroOnly) {
           const drawCount = (c?.abilities[0]?.params as any)?.draw ?? 1;
           setMultiDrawSelect({ cardId, totalDraws: drawCount, picks: [] });
         } else {
@@ -1212,7 +1212,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
       if (move) {
         if (abKind === 'reveal_and_draw') {
           setPileSelectForCard(d.cardId);
-        } else if (abKind === 'draw') {
+        } else if (abKind === 'draw' && !(card.abilities[0]?.params as any)?.heroOnly) {
           const drawCount = (card.abilities[0]?.params as any)?.draw ?? 1;
           setMultiDrawSelect({ cardId: d.cardId, totalDraws: drawCount, picks: [] });
         } else {
@@ -2015,7 +2015,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
             .map((m) => (m as Extract<Intent, { type: 'ultimate' }>).targetIndex!)
         );
         const eligible = state.discard
-          .map((id, i) => ({ id, i }))
+          .map((entry, i) => ({ id: entry.cardId, i }))
           .filter(({ i }) => eligibleDiscardIdxs.has(i));
         return (
           <div
@@ -2577,12 +2577,17 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
           } else if (abKind === 'draw') {
             const move = moves.find(m => m.type === 'play_item' && m.cardId === zoomedCard.cardId);
             if (move) {
+              const heroOnly = (hCard?.abilities[0]?.params as any)?.heroOnly;
               const drawCount = (hCard?.abilities[0]?.params as any)?.draw ?? 1;
               zoomActions.push({
                 label: 'PLAY',
                 variant: 'primary',
                 onClick: () => {
-                  setMultiDrawSelect({ cardId: zoomedCard.cardId, totalDraws: drawCount, picks: [] });
+                  if (heroOnly) {
+                    safeIntent(move);
+                  } else {
+                    setMultiDrawSelect({ cardId: zoomedCard.cardId, totalDraws: drawCount, picks: [] });
+                  }
                   setZoomedCard(null);
                 },
               });
@@ -2762,8 +2767,9 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
         const ritualCard = (() => { try { return getCard(discardSelectForCard); } catch { return null; } })();
         const targetType = (ritualCard?.abilities[0]?.params as any)?.type as string | undefined;
         const eligible = state.discard
-          .map((id, i) => ({ id, i }))
-          .filter(({ id }) => {
+          .map((entry, i) => ({ id: entry.cardId, owner: entry.owner, i }))
+          .filter(({ id, owner }) => {
+            if (owner !== perspectiveId) return false;
             const c = (() => { try { return getCard(id); } catch { return null; } })();
             return c?.cardType === 'hero' && c.fighterType === targetType;
           });

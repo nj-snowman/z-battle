@@ -255,7 +255,7 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
       }
 
       // Not a KO — no score, no on-KO triggers. The old card just goes to discard.
-      s = { ...s, discard: [...s.discard, prev.cardId], players: { ...s.players, [tp]: player } };
+      s = { ...s, discard: [...s.discard, { cardId: prev.cardId, owner: tp }], players: { ...s.players, [tp]: player } };
       break;
     }
 
@@ -280,8 +280,8 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
       // Consumables go to discard (unless already discarded by the ability)
       if (card.itemClass === 'consumable') {
         // Only add to discard if not already there from ability processing
-        if (!s.discard.includes(intent.cardId)) {
-          s = { ...s, discard: [...s.discard, intent.cardId] };
+        if (!s.discard.some((e) => e.cardId === intent.cardId)) {
+          s = { ...s, discard: [...s.discard, { cardId: intent.cardId, owner: tp }] };
         }
       }
       break;
@@ -302,7 +302,7 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
       // Discard old field
       const oldField = s.field;
       s = { ...s, players: { ...s.players, [tp]: player }, field: intent.cardId };
-      if (oldField) s = { ...s, discard: [...s.discard, oldField] };
+      if (oldField) s = { ...s, discard: [...s.discard, { cardId: oldField, owner: tp }] };
 
       // Apply HP-granting field effects
       s = applyFieldEntryEffects(s, intent.cardId);
@@ -476,7 +476,13 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
         (benchSlots as Array<typeof fighter | null>)[intent.index] = null;
         player.bench = benchSlots as typeof player.bench;
         s = { ...s, players: { ...s.players, [tp]: player } };
-        s = { ...s, discard: [...s.discard, fighter.cardId, ...fighter.equipment] };
+        s = {
+          ...s,
+          discard: [
+            ...s.discard,
+            ...[fighter.cardId, ...fighter.equipment].map((cardId) => ({ cardId, owner: tp })),
+          ],
+        };
       }
 
       break;
@@ -634,8 +640,9 @@ function applyUltimate(s: GameState, tp: PlayerId, opp: PlayerId, ab: any, targe
       const discardIdx = targetIndex;
       if (discardIdx < 0 || discardIdx >= s.discard.length) break;
       const returned = s.discard[discardIdx];
+      if (returned.owner !== tp) break; // can only revive your own KO'd cards
       const newDiscard = s.discard.filter((_, i) => i !== discardIdx);
-      s = { ...s, discard: newDiscard, players: { ...s.players, [tp]: { ...s.players[tp], hand: [...s.players[tp].hand, returned] } } };
+      s = { ...s, discard: newDiscard, players: { ...s.players, [tp]: { ...s.players[tp], hand: [...s.players[tp].hand, returned.cardId] } } };
       break;
     }
     case 'self_destruct_16': {
@@ -856,14 +863,15 @@ function applyItemAbility(
     case 'recur_from_discard': {
       // Dragon Clan Ritual: return chosen KO'd Namekian from discard to hand
       const player = { ...s.players[tp] };
-      const discardIdx = discardIndex ?? s.discard.findIndex(id => {
-        const c = getCard(id);
+      const discardIdx = discardIndex ?? s.discard.findIndex(entry => {
+        if (entry.owner !== tp) return false;
+        const c = getCard(entry.cardId);
         return c.cardType === 'hero' && cardTypesOf(c).has(p.type);
       });
-      if (discardIdx !== -1 && discardIdx < s.discard.length) {
+      if (discardIdx !== -1 && discardIdx < s.discard.length && s.discard[discardIdx].owner === tp) {
         const returned = s.discard[discardIdx];
         const newDiscard = s.discard.filter((_, i) => i !== discardIdx);
-        player.hand = [...player.hand, returned];
+        player.hand = [...player.hand, returned.cardId];
         s = { ...s, discard: newDiscard, players: { ...s.players, [tp]: player } };
       }
       break;
@@ -997,7 +1005,7 @@ function processEndOfTurn(s: GameState): GameState {
   const newDiscard = [...s.discard];
   while (player.hand.length > 7) {
     const discarded = player.hand.pop()!;
-    newDiscard.push(discarded);
+    newDiscard.push({ cardId: discarded, owner: tp });
   }
 
   // Clear stun statuses and retreat block after the stunned player has had their turn to act

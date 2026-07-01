@@ -76,14 +76,28 @@ export default function AppContent() {
 
   // Auth listener
   useEffect(() => {
+    // If Supabase hasn't responded within 4s (e.g. offline on launch), fall back
+    // to guest mode so the app is never stuck on the loading screen.
+    let settled = false;
+    const guestFallbackTimer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      setIsGuest(true);
+      setScreen('setup');
+      if (!hasImagesCached()) setShowCacheModal(true);
+    }, 4000);
+
     supabase.auth.getSession().then(({ data: { session } }) => {
+      clearTimeout(guestFallbackTimer);
       if (session?.user) {
         setUser(session.user);
+        setIsGuest(false);
         setScreen('setup');
         if (!hasImagesCached()) setShowCacheModal(true);
-      } else {
+      } else if (!settled) {
         setScreen('auth');
       }
+      settled = true;
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
@@ -108,7 +122,7 @@ export default function AppContent() {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => { clearTimeout(guestFallbackTimer); subscription.unsubscribe(); };
   }, []);
 
   // Incoming challenge listener

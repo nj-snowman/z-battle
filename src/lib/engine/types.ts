@@ -39,6 +39,11 @@ export interface PlayerState {
   benchBuuCounts: [number, number]; // same, for bench slots
 }
 
+export interface DiscardEntry {
+  cardId: string;
+  owner: PlayerId;
+}
+
 export interface LogEntry {
   t: number;
   by: PlayerId;
@@ -58,7 +63,7 @@ export interface GameState {
   turnNumber: number; // global turn counter
   firstPlayer: PlayerId; // who went first (for skip-draw on turn 1)
   field: string | null; // field card id or null
-  discard: string[];
+  discard: DiscardEntry[];
   players: { p1: PlayerState; p2: PlayerState };
   winner: PlayerId | null;
   log: LogEntry[];

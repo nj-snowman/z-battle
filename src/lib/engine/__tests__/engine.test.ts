@@ -1,6 +1,7 @@
 import { applyIntent, checkWinLoss } from '../engine';
 import { makeFighterInstance } from '../setup';
 import { getEffectiveStats } from '../buffs';
+import { legalMoves } from '../legalMoves';
 import { GameState, PlayerState, FighterInstance } from '../types';
 
 // ---- Helper to build a minimal deterministic GameState ----
@@ -768,5 +769,49 @@ describe('Majin — Babidi Manipulation', () => {
     expect(s.players.p2.koScoredAgainst).toBe(p1KosBefore + 1); // credited to Babidi's controller (p1)
     expect(s.players.p2.actives[1]).toBeNull();
     expect(s.players.p1.bench[0]?.counters.absorb).toBeUndefined(); // Absorb only triggers on Super Buu's own attacks
+  });
+});
+
+describe('Majin — Bibidi Creation ownership', () => {
+  it("can only revive your own KO'd Majin, never the opponent's, even in a mirror matchup", () => {
+    let s = makeState({ phase: 'main1' });
+    s.players.p1.deck = 'majin';
+    s.players.p2.deck = 'majin';
+    s.players.p1.actives[0] = { ...makeFighterInstance('bibidi'), summoningSick: false };
+    s.players.p1.kiCurrent = 5;
+
+    s.discard.push({ cardId: 'pui_pui', owner: 'p1' }); // p1's own KO'd Majin — index 0
+    s.discard.push({ cardId: 'yakon', owner: 'p2' });   // p2's KO'd Majin — index 1
+
+    const creationMoves = legalMoves(s, 'p1').filter(
+      m => m.type === 'ultimate' && m.fighterIndex === 0
+    ) as Array<{ targetIndex?: number }>;
+    expect(creationMoves.map(m => m.targetIndex)).toEqual([0]); // p2's discard entry never offered
+
+    // Even if forced directly (bypassing legalMoves), the engine must refuse.
+    const forced = applyIntent(s, { type: 'ultimate', fighterIndex: 0, targetIndex: 1 });
+    expect(forced.players.p1.hand).not.toContain('yakon');
+    expect(forced.discard).toHaveLength(2); // untouched
+  });
+});
+
+describe('Namekian — Dragon Clan Ritual ownership', () => {
+  it("can only recur your own KO'd Namekian, never the opponent's", () => {
+    let s = makeState({ phase: 'main1' });
+    s.players.p1.hand = ['dragon_clan_ritual'];
+    s.players.p1.kiCurrent = 2;
+
+    s.discard.push({ cardId: 'nail', owner: 'p1' });  // p1's own KO'd Namekian — index 0
+    s.discard.push({ cardId: 'dende', owner: 'p2' }); // p2's KO'd Namekian — index 1
+
+    const recurMoves = legalMoves(s, 'p1').filter(
+      m => m.type === 'play_item' && m.cardId === 'dragon_clan_ritual'
+    ) as Array<{ discardIndex?: number }>;
+    expect(recurMoves.map(m => m.discardIndex)).toEqual([0]); // p2's discard entry never offered
+
+    // Even if forced directly (bypassing legalMoves), the engine must refuse.
+    const forced = applyIntent(s, { type: 'play_item', cardId: 'dragon_clan_ritual', discardIndex: 1 });
+    expect(forced.players.p1.hand).not.toContain('dende');
+    expect(forced.discard.some(e => e.cardId === 'dende')).toBe(true); // still sitting in discard
   });
 });

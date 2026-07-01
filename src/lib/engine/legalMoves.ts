@@ -98,8 +98,9 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
             moves.push({ type: 'play_item', cardId });
           } else if (abKind === 'recur_from_discard') {
             const type = (card.abilities[0].params as any).type;
-            state.discard.forEach((id, discardIndex) => {
-              const c = getCard(id);
+            state.discard.forEach((entry, discardIndex) => {
+              if (entry.owner !== player) return;
+              const c = getCard(entry.cardId);
               if (c.cardType === 'hero' && cardTypesOf(c).has(type)) {
                 moves.push({ type: 'play_item', cardId, discardIndex });
               }
@@ -239,8 +240,9 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
               }
             }
           } else if (p.target === 'creation') {
-            state.discard.forEach((id, discardIdx) => {
-              const c = getCard(id);
+            state.discard.forEach((entry, discardIdx) => {
+              if (entry.owner !== player) return;
+              const c = getCard(entry.cardId);
               if (c.cardType === 'hero' && cardTypesOf(c).has(p.type)) {
                 moves.push({ type: 'ultimate', fighterIndex: i, targetIndex: discardIdx });
               }

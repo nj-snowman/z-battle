@@ -1,4 +1,4 @@
-const CACHE_NAME = 'z-battle-v3';
+const CACHE_NAME = 'z-battle-v4';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
