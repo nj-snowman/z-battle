@@ -790,20 +790,20 @@ export default function SetupScreen({ onStart, userEmail, isGuest = false, onOpe
             textTransform: 'uppercase',
             textAlign: 'center',
           }}>
-            AI Difficulty
+            Strength
           </span>
           <div style={{ display: 'flex', gap: 8 }}>
             {([
               { id: 'medium' as Difficulty, label: 'NORMAL' },
               { id: 'hard' as Difficulty, label: 'HARD' },
-              { id: 'strongest' as Difficulty, label: 'STRONGEST' },
+              { id: 'strongest' as Difficulty, label: 'CHAMPION OF THE UNIVERSE' },
             ]).map(({ id, label }) => {
               const isSelected = difficulty === id;
               return (
                 <button
                   key={id}
                   onClick={() => setDifficulty(id)}
-                  title={id === 'strongest' ? 'Strongest of the Universe' : undefined}
+                  title={id === 'strongest' ? 'Champion of the Universe' : undefined}
                   style={{
                     flex: 1,
                     background: isSelected
