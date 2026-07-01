@@ -18,6 +18,8 @@ function makeEmptyPlayer(deckId: string): PlayerState {
     retreatUsedThisTurn: false,
     turnNumber: 5,
     friendlySaiyanKoedThisGame: false,
+    activeBuuCounts: [0, 0],
+    benchBuuCounts: [0, 0],
   };
 }
 
