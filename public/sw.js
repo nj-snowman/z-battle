@@ -3,9 +3,21 @@ const CACHE_NAME = 'z-battle-v2';
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache =>
-      cache.addAll(['/', '/cards.json', '/manifest.json'])
-    )
+    caches.open(CACHE_NAME).then(async (cache) => {
+      await cache.addAll(['/', '/cards.json', '/manifest.json']);
+      // Precache every card image up front so offline play doesn't depend on
+      // having previously viewed each card during a prior online session.
+      try {
+        const res = await fetch('/cards.json');
+        const data = await res.json();
+        const images = [...new Set(
+          (data.cards || []).map(c => c.image).filter(Boolean).map(img => '/' + img)
+        )];
+        await Promise.all(images.map(url => cache.add(url).catch(() => {})));
+      } catch {
+        // cards.json unreachable at install time — images still cache lazily via fetch handler
+      }
+    })
   );
 });
 

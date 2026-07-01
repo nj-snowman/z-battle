@@ -107,7 +107,7 @@ const CARD_IMAGES = [
 ];
 
 
-type Mode = 'prompt' | 'loading' | 'done';
+type Mode = 'prompt' | 'loading' | 'done' | 'partial';
 
 interface ImageCacheModalProps {
   onClose: () => void;
@@ -116,8 +116,10 @@ interface ImageCacheModalProps {
 export default function ImageCacheModal({ onClose }: ImageCacheModalProps) {
   const [mode, setMode] = useState<Mode>('prompt');
   const [loaded, setLoaded] = useState(0);
-  const total = CARD_IMAGES.length;
+  const [total, setTotal] = useState(CARD_IMAGES.length);
+  const [failed, setFailed] = useState<string[]>([]);
   const countRef = useRef(0);
+  const failedRef = useRef<string[]>([]);
 
   // Read user's scouter colour preference (default green)
   const storedColor = typeof window !== 'undefined'
@@ -132,26 +134,41 @@ export default function ImageCacheModal({ onClose }: ImageCacheModalProps) {
   };
   const c = COLORS[storedColor] ?? COLORS.green;
 
-  const handleDownload = useCallback(() => {
+  const loadImages = useCallback((paths: string[]) => {
     setMode('loading');
+    setTotal(paths.length);
+    setLoaded(0);
     countRef.current = 0;
+    failedRef.current = [];
 
-    for (const path of CARD_IMAGES) {
+    for (const path of paths) {
       const img = new window.Image();
-      const done = () => {
+      const onDone = (ok: boolean) => {
         countRef.current += 1;
-        const n = countRef.current;
-        setLoaded(n);
-        if (n === CARD_IMAGES.length) {
-          localStorage.setItem(CACHE_STORAGE_KEY, '1');
-          setMode('done');
-          setTimeout(onClose, 1800);
+        if (!ok) failedRef.current.push(path);
+        setLoaded(countRef.current);
+        if (countRef.current === paths.length) {
+          if (failedRef.current.length === 0) {
+            localStorage.setItem(CACHE_STORAGE_KEY, '1');
+            setMode('done');
+            setTimeout(onClose, 1800);
+          } else {
+            setFailed(failedRef.current);
+            setMode('partial');
+          }
         }
       };
-      img.onload = done;
-      img.onerror = done;
+      img.onload = () => onDone(true);
+      img.onerror = () => onDone(false);
       img.src = '/' + path;
     }
+  }, [onClose]);
+
+  const handleDownload = useCallback(() => loadImages(CARD_IMAGES), [loadImages]);
+  const handleRetry = useCallback(() => loadImages(failed), [loadImages, failed]);
+  const handleContinueAnyway = useCallback(() => {
+    localStorage.setItem(CACHE_STORAGE_KEY, '1');
+    onClose();
   }, [onClose]);
 
   const handleSkip = useCallback(() => {
@@ -281,6 +298,53 @@ export default function ImageCacheModal({ onClose }: ImageCacheModalProps) {
             <div style={{ fontSize: 11, color: c.text, letterSpacing: 1, lineHeight: 1.8 }}>
               ✓ {total} IMAGES CACHED<br />
               <span style={{ color: c.muted, fontSize: 9 }}>POWER LEVEL ENHANCED</span>
+            </div>
+          </>
+        )}
+
+        {mode === 'partial' && (
+          <>
+            <div style={{ fontSize: 15, color: c.vivid, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 6 }}>
+              INCOMPLETE
+            </div>
+            <div style={{ fontSize: 9, color: c.muted, letterSpacing: 1, marginBottom: 14 }}>
+              {'━'.repeat(30)}
+            </div>
+            <div style={{ fontSize: 11, color: c.text, lineHeight: 1.8, marginBottom: 20, letterSpacing: 0.5 }}>
+              {failed.length} OF {total} IMAGES<br />
+              FAILED TO DOWNLOAD.<br />
+              <span style={{ color: c.muted, fontSize: 9 }}>
+                THESE MAY NOT LOAD OFFLINE
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={handleRetry}
+                style={{
+                  flex: 1, padding: '13px 0',
+                  background: `${c.vivid}1a`,
+                  border: `2px solid ${c.vivid}`,
+                  borderRadius: 3, cursor: 'pointer',
+                  fontFamily: 'Courier New, monospace',
+                  fontSize: 11, color: c.vivid, letterSpacing: 1,
+                }}
+              >
+                RETRY
+              </button>
+              <button
+                onClick={handleContinueAnyway}
+                style={{
+                  flex: 1, padding: '13px 0',
+                  background: 'transparent',
+                  border: `2px solid ${c.muted}`,
+                  borderRadius: 3, cursor: 'pointer',
+                  fontFamily: 'Courier New, monospace',
+                  fontSize: 11, color: c.muted, letterSpacing: 1,
+                }}
+              >
+                SKIP
+              </button>
             </div>
           </>
         )}

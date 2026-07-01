@@ -160,7 +160,9 @@ function LoadingScreen({ pending, onReady }: { pending: PendingGame; onReady: ()
     const srcs = [...new Set([...getDeckImages(pending.p1Deck), ...getDeckImages(pending.p2Deck)])];
     if (srcs.length === 0) { onReady(); return; }
     let done = 0;
-    const finish = () => { done++; if (done >= srcs.length) onReady(); };
+    let settled = false;
+    const ready = () => { if (!settled) { settled = true; onReady(); } };
+    const finish = () => { done++; if (done >= srcs.length) ready(); };
     for (const src of srcs) {
       const img = new window.Image();
       img.src = src;
@@ -170,6 +172,10 @@ function LoadingScreen({ pending, onReady }: { pending: PendingGame; onReady: ()
         img.onload = img.onerror = finish;
       }
     }
+    // A stalled offline fetch can leave decode()/onload/onerror unresolved —
+    // never let that leave the player stuck on this screen.
+    const timeout = setTimeout(ready, 4000);
+    return () => clearTimeout(timeout);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
