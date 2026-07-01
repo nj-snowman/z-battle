@@ -8,6 +8,8 @@ import RulebookModal from './RulebookModal';
 
 export type GameMode = 'hotseat' | 'vs_ai';
 
+type FirstPlayerChoice = PlayerId | 'random';
+
 interface SetupScreenProps {
   onStart: (p1Deck: string, p2Deck: string, firstPlayer: PlayerId, mode: GameMode, difficulty: Difficulty) => void;
   userEmail?: string | null;
@@ -238,7 +240,7 @@ export default function SetupScreen({ onStart, userEmail, isGuest = false, onOpe
   const [gameMode, setGameMode] = useState<GameMode>('vs_ai');
   const [p1Deck, setP1Deck] = useState<string | null>(null);
   const [p2Deck, setP2Deck] = useState<string | null>('random');
-  const [firstPlayer, setFirstPlayer] = useState<PlayerId | null>(null);
+  const [firstPlayer, setFirstPlayer] = useState<FirstPlayerChoice>('random');
   const [difficulty, setDifficulty] = useState<Difficulty>('hard');
   const [showRulebook, setShowRulebook] = useState(false);
   const [pendingGame, setPendingGame] = useState<PendingGame | null>(null);
@@ -251,10 +253,16 @@ export default function SetupScreen({ onStart, userEmail, isGuest = false, onOpe
     return base;
   }
 
+  function resolveFirstPlayer(choice: FirstPlayerChoice): PlayerId {
+    if (choice === 'random') return Math.random() < 0.5 ? 'p1' : 'p2';
+    return choice;
+  }
+
   function handleStart() {
-    if (!p1Deck || !p2Deck || !firstPlayer) return;
-    const resolved = resolveP2Deck(p2Deck);
-    const game: PendingGame = { p1Deck, p2Deck: resolved, firstPlayer, mode: gameMode, difficulty };
+    if (!p1Deck || !p2Deck) return;
+    const resolvedDeck = resolveP2Deck(p2Deck);
+    const resolvedFirst = resolveFirstPlayer(firstPlayer);
+    const game: PendingGame = { p1Deck, p2Deck: resolvedDeck, firstPlayer: resolvedFirst, mode: gameMode, difficulty };
     setPendingGame(game);
     setScreen('loading');
   }
@@ -663,52 +671,76 @@ export default function SetupScreen({ onStart, userEmail, isGuest = false, onOpe
   }
 
   /* ---- SETUP ---- */
-  const canStart = p1Deck !== null && p2Deck !== null && firstPlayer !== null;
+  const canStart = p1Deck !== null && p2Deck !== null;
   const p2Label = gameMode === 'vs_ai' ? 'AI Deck' : 'Player 2';
 
   return (
     <div style={{ ...baseStyle, gap: 24 }}>
       {/* Header with back */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingTop: 8 }}>
-        <button
-          onClick={() => setScreen('home')}
-          style={{
-            background: 'rgba(255,255,255,0.06)',
-            border: '1.5px solid rgba(255,255,255,0.12)',
-            borderRadius: 8,
-            width: 36,
-            height: 36,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}
-        >
-          <span style={{ fontSize: 20, color: 'var(--muted)', lineHeight: 1 }}>‹</span>
-        </button>
-        <div>
-          <h2 style={{
-            fontFamily: 'Bangers, sans-serif',
-            fontSize: 26,
-            letterSpacing: 2,
-            color: gameMode === 'vs_ai' ? 'var(--ki)' : '#3aa6ff',
-            margin: 0,
-            lineHeight: 1,
-          }}>
-            {gameMode === 'vs_ai' ? 'VS AI' : 'HOTSEAT'}
-          </h2>
-          <p style={{
-            fontFamily: 'Saira Condensed, sans-serif',
-            fontSize: 11,
-            color: 'var(--muted)',
-            letterSpacing: 1.5,
-            textTransform: 'uppercase',
-            margin: '3px 0 0',
-          }}>
-            Choose Your Decks
-          </p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingTop: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button
+            onClick={() => setScreen('home')}
+            style={{
+              background: 'rgba(255,255,255,0.06)',
+              border: '1.5px solid rgba(255,255,255,0.12)',
+              borderRadius: 8,
+              width: 36,
+              height: 36,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <span style={{ fontSize: 20, color: 'var(--muted)', lineHeight: 1 }}>‹</span>
+          </button>
+          <div>
+            <h2 style={{
+              fontFamily: 'Bangers, sans-serif',
+              fontSize: 26,
+              letterSpacing: 2,
+              color: gameMode === 'vs_ai' ? 'var(--ki)' : '#3aa6ff',
+              margin: 0,
+              lineHeight: 1,
+            }}>
+              {gameMode === 'vs_ai' ? 'VS AI' : 'HOTSEAT'}
+            </h2>
+            <p style={{
+              fontFamily: 'Saira Condensed, sans-serif',
+              fontSize: 11,
+              color: 'var(--muted)',
+              letterSpacing: 1.5,
+              textTransform: 'uppercase',
+              margin: '3px 0 0',
+            }}>
+              Choose Your Decks
+            </p>
+          </div>
         </div>
+        {canStart && (
+          <button
+            onClick={handleStart}
+            style={{
+              flexShrink: 0,
+              background: 'linear-gradient(135deg, var(--ki), var(--ki2))',
+              border: '2px solid var(--ki)',
+              borderRadius: 8,
+              padding: '10px 14px',
+              cursor: 'pointer',
+              fontFamily: 'Bangers, sans-serif',
+              fontSize: 14,
+              color: '#0d0f14',
+              letterSpacing: 1,
+              textTransform: 'uppercase' as const,
+              boxShadow: '0 4px 16px rgba(255,122,24,0.4)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Start Battle
+          </button>
+        )}
       </div>
 
       {/* Deck pickers */}
@@ -743,8 +775,8 @@ export default function SetupScreen({ onStart, userEmail, isGuest = false, onOpe
           Who Goes First?
         </span>
         <div style={{ display: 'flex', gap: 8 }}>
-          {(['p1', 'p2'] as PlayerId[]).map((pid) => {
-            const label = pid === 'p1' ? 'PLAYER 1' : (gameMode === 'vs_ai' ? 'AI' : 'PLAYER 2');
+          {(['random', 'p1', 'p2'] as FirstPlayerChoice[]).map((pid) => {
+            const label = pid === 'random' ? 'RANDOM' : pid === 'p1' ? 'PLAYER 1' : (gameMode === 'vs_ai' ? 'AI' : 'PLAYER 2');
             const isSelected = firstPlayer === pid;
             return (
               <button
@@ -759,12 +791,12 @@ export default function SetupScreen({ onStart, userEmail, isGuest = false, onOpe
                     ? '2px solid var(--ki)'
                     : '1.5px solid rgba(255,255,255,0.1)',
                   borderRadius: 8,
-                  padding: '12px 8px',
+                  padding: '12px 6px',
                   cursor: 'pointer',
                   fontFamily: 'Bangers, sans-serif',
-                  fontSize: 14,
+                  fontSize: 12,
                   color: isSelected ? '#0d0f14' : 'var(--muted)',
-                  letterSpacing: 1,
+                  letterSpacing: 0.5,
                   textTransform: 'uppercase' as const,
                   transition: 'all 0.15s',
                   boxShadow: isSelected ? '0 4px 16px rgba(255,122,24,0.4)' : 'none',
@@ -837,30 +869,6 @@ export default function SetupScreen({ onStart, userEmail, isGuest = false, onOpe
           </div>
         </div>
       )}
-
-      {/* Start */}
-      <button
-        onClick={handleStart}
-        disabled={!canStart}
-        style={{
-          background: canStart
-            ? 'linear-gradient(135deg, var(--ki), var(--ki2))'
-            : 'rgba(255,255,255,0.06)',
-          border: 'none',
-          borderRadius: 12,
-          padding: '16px',
-          cursor: canStart ? 'pointer' : 'not-allowed',
-          fontFamily: 'Bangers, sans-serif',
-          fontSize: 18,
-          color: canStart ? '#0d0f14' : 'var(--muted)',
-          letterSpacing: 2,
-          textTransform: 'uppercase' as const,
-          boxShadow: canStart ? '0 4px 24px rgba(255,122,24,0.5)' : 'none',
-          transition: 'all 0.2s',
-        }}
-      >
-        START BATTLE
-      </button>
     </div>
   );
 }
