@@ -490,34 +490,60 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     setPendingAttack(null);
     if (beamTimerRef.current) clearTimeout(beamTimerRef.current);
 
-    // Try to read card positions from DOM
-    const board = boardRef.current;
-    let beamData: BeamStruggleData | null = null;
-    if (board && intent.type === 'attack') {
-      const boardRect = board.getBoundingClientRect();
-      const aEl = board.querySelector(`[data-subslot="active"][data-index="${intent.attackerIndex}"][data-opp="false"]`);
-      const dEl = board.querySelector(`[data-subslot="active"][data-index="${intent.targetIndex}"][data-opp="true"]`);
-      if (aEl && dEl) {
-        const aR = aEl.getBoundingClientRect();
-        const dR = dEl.getBoundingClientRect();
-        const attackerFighter = myPlayer.actives[intent.attackerIndex];
-        const defenderFighter = oppPlayer.actives[intent.targetIndex];
-        let attackerCard; try { attackerCard = attackerFighter ? getCard(attackerFighter.cardId) : null; } catch { attackerCard = null; }
-        let defenderCard; try { defenderCard = defenderFighter ? getCard(defenderFighter.cardId) : null; } catch { defenderCard = null; }
-        beamData = {
-          attackerPos: { x: aR.left + aR.width / 2 - boardRect.left, y: aR.top + aR.height / 2 - boardRect.top },
-          defenderPos: { x: dR.left + dR.width / 2 - boardRect.left, y: dR.top + dR.height / 2 - boardRect.top },
-          attackerColor: beamColorFor(attackerCard),
-          defenderColor: beamColorFor(defenderCard),
-        };
+    const startBeam = () => {
+      // Try to read card positions from DOM
+      const board = boardRef.current;
+      let beamData: BeamStruggleData | null = null;
+      if (board && intent.type === 'attack') {
+        const boardRect = board.getBoundingClientRect();
+        const aEl = board.querySelector(`[data-subslot="active"][data-index="${intent.attackerIndex}"][data-opp="false"]`);
+        const dEl = board.querySelector(`[data-subslot="active"][data-index="${intent.targetIndex}"][data-opp="true"]`);
+        if (aEl && dEl) {
+          const aR = aEl.getBoundingClientRect();
+          const dR = dEl.getBoundingClientRect();
+          const attackerFighter = myPlayer.actives[intent.attackerIndex];
+          const defenderFighter = oppPlayer.actives[intent.targetIndex];
+          let attackerCard; try { attackerCard = attackerFighter ? getCard(attackerFighter.cardId) : null; } catch { attackerCard = null; }
+          let defenderCard; try { defenderCard = defenderFighter ? getCard(defenderFighter.cardId) : null; } catch { defenderCard = null; }
+          beamData = {
+            attackerPos: { x: aR.left + aR.width / 2 - boardRect.left, y: aR.top + aR.height / 2 - boardRect.top },
+            defenderPos: { x: dR.left + dR.width / 2 - boardRect.left, y: dR.top + dR.height / 2 - boardRect.top },
+            attackerColor: beamColorFor(attackerCard),
+            defenderColor: beamColorFor(defenderCard),
+          };
+        }
+      }
+      setBeamStruggle(beamData);
+
+      beamTimerRef.current = setTimeout(() => {
+        setBeamStruggle(null);
+        if (!stateRef.current.winner) safeIntent(intent);
+      }, 1500);
+    };
+
+    // Named special-move callout (Kaioken, Tri-Beam, one-shot abilities like Burning
+    // Attack) — shown before the beam struggle, same as the ultimate name reveal.
+    let specialName: string | null = null;
+    if (intent.type === 'attack' && (intent.useKaioken || intent.useTriBeam || intent.useOneShotAbility)) {
+      const attackerFighter = myPlayer.actives[intent.attackerIndex];
+      if (attackerFighter) {
+        try {
+          const card = getCard(attackerFighter.cardId);
+          if (intent.useKaioken) specialName = card.abilities.find(a => a.key === 'kaioken')?.name ?? null;
+          else if (intent.useTriBeam) specialName = card.abilities.find(a => a.key === 'tri_beam')?.name ?? null;
+          else if (intent.useOneShotAbility) specialName = card.abilities.find(a => a.kind === 'one_shot_on_attack')?.name ?? null;
+        } catch { specialName = null; }
       }
     }
-    setBeamStruggle(beamData);
 
-    beamTimerRef.current = setTimeout(() => {
-      setBeamStruggle(null);
-      if (!stateRef.current.winner) safeIntent(intent);
-    }, 1500);
+    if (specialName) {
+      if (ultimateNameTimerRef.current) clearTimeout(ultimateNameTimerRef.current);
+      setUltimateNameText(specialName);
+      ultimateNameTimerRef.current = setTimeout(() => setUltimateNameText(null), 1350);
+      beamTimerRef.current = setTimeout(startBeam, 1350);
+    } else {
+      startBeam();
+    }
   }
 
   // ---- Enemy attack beam (AI attacking the player) ----
@@ -737,7 +763,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     // center — fades out just before the beam struggle takes over.
     let ultimateName: string | null = null;
     try {
-      const ultAb = getCard(cardId).abilities.find(ab => ab.kind === 'ultimate');
+      const ultAb = getCard(cardId).abilities.find(ab => ab.kind === 'ultimate' || ab.kind === 'activated_one_shot');
       ultimateName = ultAb?.name ?? null;
     } catch { ultimateName = null; }
     if (ultimateName) {
