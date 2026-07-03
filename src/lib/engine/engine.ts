@@ -1,4 +1,4 @@
-import { GameState, Intent, PlayerId, SlotType, FighterInstance } from './types';
+import { GameState, Intent, PlayerId, SlotType, FighterInstance, CardDef } from './types';
 import { getCard } from './cards';
 import { getEffectiveStats, cardTypesOf } from './buffs';
 import { resolveKo, applyDamageToFighter, resolveBasicAttack, promoteFromBench, promoteSpecific } from './combat';
@@ -100,16 +100,9 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
       let fighter = makeFighterInstance(intent.cardId);
 
       // Apply active field HP bonus to newly summoned fighter (e.g. Frieza's Spaceship)
-      if (s.field) {
-        const fieldCard = getCard(s.field);
-        for (const ab of fieldCard.abilities) {
-          if (ab.kind === 'field_type_buff') {
-            const fp = ab.params as any;
-            if (fp.hp && cardTypesOf(card).has(fp.type)) {
-              fighter = { ...fighter, maxHp: fighter.maxHp + fp.hp, currentHp: fighter.currentHp + fp.hp };
-            }
-          }
-        }
+      const fieldHpBonus = activeFieldHpBonusFor(s, card);
+      if (fieldHpBonus) {
+        fighter = { ...fighter, maxHp: fighter.maxHp + fieldHpBonus, currentHp: fighter.currentHp + fieldHpBonus };
       }
 
       // triggered_on_play effects
@@ -192,7 +185,8 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
       player.hand = player.hand.filter((_, i) => i !== handIdx);
       player.kiCurrent -= cost;
 
-      // Re-apply carried equipment's HP bonus to the new base HP — don't double-count against prev.maxHp.
+      // Re-apply carried equipment's HP bonus and the active field's HP bonus to the
+      // new base HP — don't double-count against prev.maxHp.
       let maxHp = card.hp!;
       for (const itemId of prev.equipment) {
         const item = getCard(itemId);
@@ -203,6 +197,7 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
           }
         }
       }
+      maxHp += activeFieldHpBonusFor(s, card);
       const damageTaken = prev.maxHp - prev.currentHp;
       const currentHp = Math.max(1, maxHp - damageTaken);
 
@@ -884,6 +879,21 @@ function applyItemAbility(
       break;
   }
   return s;
+}
+
+// How much HP the currently active field grants a fighter of this card, if any
+// (e.g. Babidi's Spaceship for Majin, Frieza's Spaceship for Frieza Force).
+function activeFieldHpBonusFor(s: GameState, card: CardDef): number {
+  if (!s.field) return 0;
+  const fieldCard = getCard(s.field);
+  let bonus = 0;
+  for (const ab of fieldCard.abilities) {
+    if (ab.kind === 'field_type_buff') {
+      const p = ab.params as any;
+      if (p.hp && cardTypesOf(card).has(p.type)) bonus += p.hp;
+    }
+  }
+  return bonus;
 }
 
 function applyFieldEntryEffects(s: GameState, fieldId: string): GameState {
