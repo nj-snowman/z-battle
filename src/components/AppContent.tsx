@@ -40,7 +40,14 @@ const DECK_OPTIONS = [
   { id: 'frieza_force', name: 'Frieza Force', color: '#b44dff' },
 ];
 
-export default function AppContent() {
+interface AppContentProps {
+  // Set when the app bundle itself took >4s to load (see src/app/page.tsx) — a sign
+  // the connection is already flaky, so skip the redundant internal auth-check wait
+  // and go straight to guest mode instead of making the user wait through it twice.
+  forceOfflineOnMount?: boolean;
+}
+
+export default function AppContent({ forceOfflineOnMount = false }: AppContentProps) {
   const [screen, setScreen] = useState<Screen>('loading');
   const [user, setUser] = useState<User | null>(null);
   const [isGuest, setIsGuest] = useState(false);
@@ -83,7 +90,9 @@ export default function AppContent() {
   // Auth listener
   useEffect(() => {
     // If Supabase hasn't responded within 4s (e.g. offline on launch), fall back
-    // to guest mode so the app is never stuck on the loading screen.
+    // to guest mode so the app is never stuck on the loading screen. If the bundle
+    // itself already took >4s to load, skip straight to guest mode on mount instead
+    // of making the user sit through this wait a second time.
     let settled = false;
     const guestFallbackTimer = setTimeout(() => {
       if (settled) return;
@@ -91,7 +100,7 @@ export default function AppContent() {
       setIsGuest(true);
       setScreen('setup');
       if (!hasImagesCached()) setShowCacheModal(true);
-    }, 4000);
+    }, forceOfflineOnMount ? 0 : 4000);
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       clearTimeout(guestFallbackTimer);

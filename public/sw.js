@@ -1,4 +1,15 @@
-const CACHE_NAME = 'z-battle-v5';
+const CACHE_NAME = 'z-battle-v6';
+
+// A stalled fetch (flaky/dead connection) would otherwise hang forever, which is
+// exactly what let the app's own 90%-init-screen hang past its intended timeout —
+// the JS chunk request never settled, so nothing downstream ever got a chance to run.
+const FETCH_TIMEOUT_MS = 10000;
+
+function fetchWithTimeout(request, ms) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), ms);
+  return fetch(request, { signal: controller.signal }).finally(() => clearTimeout(timeoutId));
+}
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -41,7 +52,7 @@ self.addEventListener('fetch', (event) => {
   // immediately; fall back to cache only when offline.
   if (isNavigation) {
     event.respondWith(
-      fetch(event.request)
+      fetchWithTimeout(event.request, FETCH_TIMEOUT_MS)
         .then(response => {
           if (response && response.status === 200) {
             caches.open(CACHE_NAME).then(cache => cache.put(event.request, response.clone()));
@@ -57,7 +68,7 @@ self.addEventListener('fetch', (event) => {
     caches.open(CACHE_NAME).then(cache =>
       cache.match(event.request).then(cached => {
         if (cached) return cached;
-        return fetch(event.request).then(response => {
+        return fetchWithTimeout(event.request, FETCH_TIMEOUT_MS).then(response => {
           if (response && response.status === 200 && response.type === 'basic') {
             cache.put(event.request, response.clone());
           }
