@@ -75,6 +75,7 @@ export interface AbilityDef {
   key: string;
   kind: string;
   oncePerGame?: boolean;
+  name?: string; // display name for ultimates, shown big on-screen when used
   text: string;
   params: Record<string, unknown>;
 }

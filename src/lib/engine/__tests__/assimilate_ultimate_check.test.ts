@@ -27,8 +27,8 @@ test('Assimilate gains a stack when Kid Buu KOs via its ultimate (planet_burst)'
   const victim2 = mkFighter('yakon', { maxHp: 1500, currentHp: 1500 });
 
   let s: GameState = {
-    turnPlayer: 'p1', phase: 'battle', firstPlayer: 'p1', field: null, discard: [],
-    pendingPromotions: [], winner: null,
+    turnPlayer: 'p1', turnNumber: 5, phase: 'battle', firstPlayer: 'p1', field: null, discard: [],
+    pendingPromotions: [], winner: null, log: [], firstAttackDone: false,
     players: {
       p1: mkPlayer([kidBuu, null]),
       p2: mkPlayer([victim1, victim2]),

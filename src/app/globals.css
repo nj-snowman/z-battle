@@ -130,6 +130,19 @@ button {
   animation: board-shake 0.7s ease-out;
 }
 
+/* Ultimate name callout — big DBZ-orange text shown right before the beam struggle */
+@keyframes ultimate-name-reveal {
+  0% { opacity: 0; transform: scale(0.6) translateY(10px); }
+  15% { opacity: 1; transform: scale(1.1) translateY(0); }
+  25% { transform: scale(1) translateY(0); }
+  82% { opacity: 1; transform: scale(1) translateY(0); }
+  100% { opacity: 0; transform: scale(1.05) translateY(-6px); }
+}
+
+.ultimate-name-reveal {
+  animation: ultimate-name-reveal 1.35s ease-out forwards;
+}
+
 /* Win/loss overlay fade-in, so it reads as a deliberate reveal rather than a hard cut */
 @keyframes winner-overlay-in {
   0% { opacity: 0; }

@@ -261,6 +261,8 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
   const prevFieldImageRef = useRef<string | null>(null);
   const fieldLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [narration, setNarration] = useState<string | null>(null);
+  const [ultimateNameText, setUltimateNameText] = useState<string | null>(null);
+  const ultimateNameTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handContainerRef = useRef<HTMLDivElement>(null);
   const [handContainerW, setHandContainerW] = useState(390);
   const prevStateSnap = useRef<{
@@ -729,6 +731,19 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
       const r = el.getBoundingClientRect();
       exitDx = (r.left + r.width / 2 - boardRect.left) - centerX;
       exitDy = (r.top + r.height / 2 - boardRect.top) - centerY;
+    }
+
+    // Big DBZ-orange callout with the ultimate's name, shown while the card flies to
+    // center — fades out just before the beam struggle takes over.
+    let ultimateName: string | null = null;
+    try {
+      const ultAb = getCard(cardId).abilities.find(ab => ab.kind === 'ultimate');
+      ultimateName = ultAb?.name ?? null;
+    } catch { ultimateName = null; }
+    if (ultimateName) {
+      if (ultimateNameTimerRef.current) clearTimeout(ultimateNameTimerRef.current);
+      setUltimateNameText(ultimateName);
+      ultimateNameTimerRef.current = setTimeout(() => setUltimateNameText(null), 1350);
     }
 
     cardAnimLock.current = true;
@@ -1890,6 +1905,27 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
           </div>
         );
       })()}
+
+      {/* Ultimate name callout — big DBZ-orange text, shown before the beam struggle */}
+      {ultimateNameText && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 360,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          pointerEvents: 'none', padding: '0 24px',
+        }}>
+          <div className="ultimate-name-reveal" style={{
+            fontFamily: 'Bangers, sans-serif',
+            fontSize: 38,
+            color: 'var(--ki)',
+            letterSpacing: 3,
+            textTransform: 'uppercase',
+            textAlign: 'center',
+            textShadow: '0 0 24px rgba(255,122,24,0.9), 0 0 54px rgba(255,122,24,0.55), 0 2px 6px rgba(0,0,0,0.85)',
+          }}>
+            {ultimateNameText}
+          </div>
+        </div>
+      )}
 
       {/* Retreat swap animation — two cards cross-flying */}
       {retreatAnim && (() => {
