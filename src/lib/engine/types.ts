@@ -66,7 +66,7 @@ export interface GameState {
   players: { p1: PlayerState; p2: PlayerState };
   winner: PlayerId | null;
   log: LogEntry[];
-  firstAttackDone: boolean;
+  firstDamageDone: boolean; // the first instance of damage this game (any source) deals half, rounded up to the nearest 500
   pendingPromotions: PendingPromotion[];
 }
 

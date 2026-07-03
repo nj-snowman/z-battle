@@ -28,7 +28,7 @@ test('Assimilate gains a stack when Kid Buu KOs via its ultimate (planet_burst)'
 
   let s: GameState = {
     turnPlayer: 'p1', turnNumber: 5, phase: 'battle', firstPlayer: 'p1', field: null, discard: [],
-    pendingPromotions: [], winner: null, log: [], firstAttackDone: false,
+    pendingPromotions: [], winner: null, log: [], firstDamageDone: false,
     players: {
       p1: mkPlayer([kidBuu, null]),
       p2: mkPlayer([victim1, victim2]),

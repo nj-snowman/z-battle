@@ -36,7 +36,7 @@ function makeState(overrides?: Partial<GameState>): GameState {
     },
     winner: null,
     log: [],
-    firstAttackDone: true,
+    firstDamageDone: true,
     pendingPromotions: [],
   };
   return { ...base, ...overrides };

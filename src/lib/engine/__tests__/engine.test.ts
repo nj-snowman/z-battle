@@ -36,7 +36,7 @@ function makeState(overrides?: Partial<GameState>): GameState {
     },
     winner: null,
     log: [],
-    firstAttackDone: false,
+    firstDamageDone: false,
     pendingPromotions: [],
   };
   return { ...base, ...overrides };
@@ -689,17 +689,19 @@ describe('Majin — Kid Buu Planet Burst', () => {
 
     s = applyIntent(s, { type: 'ultimate', fighterIndex: 0 });
 
+    // Planet Burst hits the bench before the actives, so bench[0] (evil_buu) takes
+    // the game's first-ever instance of damage — halved to 1000, leaving it alive.
+    expect(s.players.p2.bench[0]?.currentHp).toBe(1000); // 2000 - 1000 (halved first hit), survives
+    expect(s.players.p2.bench[1]?.currentHp).toBe(4000); // 6000 - 2000, survives
     expect(s.players.p2.actives[0]).toBeNull();
     expect(s.players.p2.actives[1]).toBeNull();
-    expect(s.players.p2.bench[0]).toBeNull();
-    expect(s.players.p2.bench[1]?.currentHp).toBe(4000); // 6000 - 2000, survives
 
-    // 3 KOs this wave -> Kid Buu +1500 ATK / +1500 HP (Pure Evil)
+    // 2 KOs this wave (actives only; evil_buu survived) -> Kid Buu +1000 ATK / +1000 HP (Pure Evil)
     const kb = s.players.p1.actives[0]!;
-    expect(kb.maxHp).toBe(9000 + 1500);
-    expect(kb.currentHp).toBe(9000 + 1500);
+    expect(kb.maxHp).toBe(9000 + 1000);
+    expect(kb.currentHp).toBe(9000 + 1000);
     const stats = getEffectiveStats(kb, 'active', 0, 'p1', s);
-    expect(stats.atk).toBe(6500 + 1500);
+    expect(stats.atk).toBe(6500 + 1000);
   });
 });
 

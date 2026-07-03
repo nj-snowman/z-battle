@@ -114,6 +114,6 @@ export const mockState: GameState = {
   players: { p1, p2 },
   winner: null,
   log: [],
-  firstAttackDone: false,
+  firstDamageDone: false,
   pendingPromotions: [],
 };

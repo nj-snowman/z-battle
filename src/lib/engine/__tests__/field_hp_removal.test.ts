@@ -22,7 +22,7 @@ function mkPlayer(actives: (FighterInstance | null)[], hand: string[] = []): Pla
 function baseState(p1Actives: (FighterInstance | null)[], p1Hand: string[], field: string | null): GameState {
   return {
     turnPlayer: 'p1', turnNumber: 5, phase: 'main1', firstPlayer: 'p1', field, discard: [],
-    pendingPromotions: [], winner: null, log: [], firstAttackDone: false,
+    pendingPromotions: [], winner: null, log: [], firstDamageDone: false,
     players: { p1: mkPlayer(p1Actives, p1Hand), p2: mkPlayer([null, null]) },
   };
 }

@@ -95,7 +95,7 @@ export function createInitialState(
     },
     winner: null,
     log: [],
-    firstAttackDone: false,
+    firstDamageDone: false,
     pendingPromotions: [],
   };
 }

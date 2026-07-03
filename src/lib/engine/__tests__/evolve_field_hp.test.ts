@@ -26,7 +26,7 @@ test('evolving a Buu under an active field keeps the field HP bonus instead of l
   let s: GameState = {
     turnPlayer: 'p1', turnNumber: 5, phase: 'main1', firstPlayer: 'p1',
     field: 'babidis_spaceship', discard: [],
-    pendingPromotions: [], winner: null, log: [], firstAttackDone: false,
+    pendingPromotions: [], winner: null, log: [], firstDamageDone: false,
     players: {
       p1: mkPlayer([majinBuuFat, null], ['super_buu']),
       p2: mkPlayer([null, null]),

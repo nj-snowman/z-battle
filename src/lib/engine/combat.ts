@@ -293,8 +293,15 @@ export function applyDamageToFighter(
   const fighter = slots[index];
   if (!fighter) return s;
 
-  // Check Barrier Field: prevent up to 2000 damage
+  // First instance of damage in the game deals half (rounded up to the nearest
+  // 500), regardless of source — basic attack, ultimate, item, or field damage.
   let actualDamage = damage;
+  if (!s.firstDamageDone) {
+    actualDamage = Math.ceil(actualDamage * 0.5 / 500) * 500;
+    s = { ...s, firstDamageDone: true };
+  }
+
+  // Check Barrier Field: prevent up to 2000 damage
   const barrierIdx = fighter.equipment.findIndex(id => id === 'barrier_field');
   let newEquipment = [...fighter.equipment];
   if (barrierIdx !== -1) {
@@ -411,13 +418,7 @@ export function resolveBasicAttack(
   }
 
   const rawDamage = atkValue - defValue;
-  let damage = Math.max(rawDamage, 500) + fieldBonus + (options?.extraDamage ?? 0);
-
-  // First attack of the game: 50% damage rounded up to nearest 500
-  if (!s.firstAttackDone) {
-    damage = Math.ceil(damage * 0.5 / 500) * 500;
-    s = { ...s, firstAttackDone: true };
-  }
+  const damage = Math.max(rawDamage, 500) + fieldBonus + (options?.extraDamage ?? 0);
 
   // Mark fighter as having attacked
   const newActives = [...player.actives] as typeof player.actives;

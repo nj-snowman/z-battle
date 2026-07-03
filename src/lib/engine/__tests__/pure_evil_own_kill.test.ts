@@ -22,7 +22,7 @@ function mkPlayer(actives: (FighterInstance | null)[]): PlayerState {
 function baseState(p1Actives: (FighterInstance | null)[], p2Actives: (FighterInstance | null)[]): GameState {
   return {
     turnPlayer: 'p1', turnNumber: 5, phase: 'battle', firstPlayer: 'p1', field: null, discard: [],
-    pendingPromotions: [], winner: null, log: [], firstAttackDone: false,
+    pendingPromotions: [], winner: null, log: [], firstDamageDone: false,
     players: { p1: mkPlayer(p1Actives), p2: mkPlayer(p2Actives) },
   };
 }
