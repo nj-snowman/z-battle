@@ -188,6 +188,12 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
   const [kiAnimating, setKiAnimating] = useState(false);
   const [beamClash, setBeamClash] = useState(false);
 
+  // Victory finale: hold on the battlefield (board shake, KO flash, narration)
+  // before revealing the win/loss overlay, instead of cutting to it instantly.
+  const [boardShake, setBoardShake] = useState(false);
+  const [winnerRevealed, setWinnerRevealed] = useState(false);
+  const winnerRevealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Item/field/hero play animation
   type ItemPlayAnim = {
     cardId: string;
@@ -263,6 +269,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     turn: PlayerId;
     phase: string;
     friezaWrathSides: Set<string>;
+    winner: PlayerId | null;
   } | null>(null);
 
   // Reset selection when state changes
@@ -337,6 +344,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
       turn: state.turnPlayer,
       phase: state.phase,
       friezaWrathSides: new Set(state.pendingPromotions.filter(p => p.friezaWrathPending).map(p => p.side)),
+      winner: state.winner,
     };
     const fill = (slots: Array<{ currentHp: number } | null>, pId: string, side: string) => {
       slots.forEach((f, i) => {
@@ -406,6 +414,14 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
         const phrase = phrases[Math.floor(Math.random() * phrases.length)];
         setNarration(phrase);
         setTimeout(() => setNarration(null), 2500);
+      }
+      // Game just ended — hold on the battlefield (shake + KO flash + narration already
+      // queued above) before revealing the win/loss overlay, instead of cutting instantly.
+      if (!snap.winner && state.winner) {
+        setBoardShake(true);
+        setTimeout(() => setBoardShake(false), 700);
+        if (winnerRevealTimerRef.current) clearTimeout(winnerRevealTimerRef.current);
+        winnerRevealTimerRef.current = setTimeout(() => setWinnerRevealed(true), 900);
       }
       if (snap.phase !== state.phase) {
         const phaseLabels: Record<string, string> = { main1: 'MAIN PHASE', battle: 'BATTLE PHASE', main2: 'MAIN PHASE 2', draw: 'DRAW PHASE' };
@@ -1434,6 +1450,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     <div
       ref={boardRef}
       data-slot="notarget"
+      className={boardShake ? 'board-shake' : undefined}
       style={{
         width: '100%',
         maxWidth: 430,
@@ -2087,9 +2104,10 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
         );
       })()}
 
-      {/* Win / loss overlay — Dragon Radar style */}
-      {state.winner && (
-        <div style={{
+      {/* Win / loss overlay — Dragon Radar style. Held back briefly after the finishing
+          blow (see winnerRevealed) so the KO flash / board shake / narration land first. */}
+      {winnerRevealed && state.winner && (
+        <div className="winner-overlay-in" style={{
           position: 'absolute', inset: 0, zIndex: 500,
           background: 'rgba(0,0,0,0.87)',
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20,

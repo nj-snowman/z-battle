@@ -28,6 +28,10 @@ type Screen =
 
 const AI_PLAYER: PlayerId = 'p2';
 
+// Let the battlefield's finishing-blow sequence (board shake, KO flash, narration,
+// then the VICTORY/DEFEAT reveal in GameBoard) play out before cutting to WinScreen.
+const WIN_SCREEN_DELAY_MS = 2800;
+
 const DECK_OPTIONS = [
   { id: 'saiyan', name: 'Saiyan', color: '#ff7a18' },
   { id: 'namekian', name: 'Namekian', color: '#34c759' },
@@ -53,6 +57,8 @@ export default function AppContent() {
   const [aiDifficulty, setAiDifficulty] = useState<Difficulty>('hard');
   const [currentGameMode, setCurrentGameMode] = useState<GameMode>('hotseat');
   const [winnerState, setWinnerState] = useState<{ winner: PlayerId; deck: string } | null>(null);
+  const winScreenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (winScreenTimerRef.current) clearTimeout(winScreenTimerRef.current); }, []);
   const [showCacheModal, setShowCacheModal] = useState(false);
   const [pendingSetup, setPendingSetup] = useState<{
     p1Deck: string; p2Deck: string; firstPlayer: PlayerId; mode: GameMode; difficulty: Difficulty;
@@ -241,17 +247,23 @@ export default function AppContent() {
     setGameState(newState);
 
     if (newState.winner) {
-      setWinnerState({ winner: newState.winner, deck: newState.players[newState.winner].deck });
+      const winner = newState.winner;
       if (user) {
         const mode = aiPlayer ? 'ai' : 'hotseat';
         supabase.from('game_results').insert({
           user_id: user.id,
           game_mode: mode,
           deck: newState.players['p1'].deck,
-          won: newState.winner === 'p1',
+          won: winner === 'p1',
         }).then(() => {});
       }
-      setScreen('win');
+      // gameState is already updated above, so GameBoard plays its finishing-blow
+      // animation now — hold here before cutting to WinScreen.
+      if (winScreenTimerRef.current) clearTimeout(winScreenTimerRef.current);
+      winScreenTimerRef.current = setTimeout(() => {
+        setWinnerState({ winner, deck: newState.players[winner].deck });
+        setScreen('win');
+      }, WIN_SCREEN_DELAY_MS);
       return;
     }
 

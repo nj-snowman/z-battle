@@ -18,6 +18,10 @@ interface OnlineGameScreenProps {
   onLeave: () => void;
 }
 
+// Let GameBoard's finishing-blow sequence (board shake, KO flash, narration, then the
+// VICTORY/DEFEAT reveal) play out before the parent cuts away to WinScreen.
+const WIN_SCREEN_DELAY_MS = 2800;
+
 export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onLeave }: OnlineGameScreenProps) {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [matchData, setMatchData] = useState<Match | null>(null);
@@ -29,6 +33,13 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
   const lastWriteAtRef = useRef<string | null>(null);
   const isBeamActiveRef = useRef(false);
   const bufferedStateRef = useRef<GameState | null>(null);
+  const gameEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (gameEndTimerRef.current) clearTimeout(gameEndTimerRef.current); }, []);
+
+  const scheduleGameEnd = useCallback((winner: PlayerId, winnerDeck: string, myDeck: string) => {
+    if (gameEndTimerRef.current) clearTimeout(gameEndTimerRef.current);
+    gameEndTimerRef.current = setTimeout(() => onGameEnd(winner, winnerDeck, myDeck), WIN_SCREEN_DELAY_MS);
+  }, [onGameEnd]);
 
   // Load initial state
   useEffect(() => {
@@ -49,10 +60,10 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
       bufferedStateRef.current = null;
       setGameState(buffered);
       if (buffered.winner) {
-        onGameEnd(buffered.winner, buffered.players[buffered.winner].deck, buffered.players[myRole].deck);
+        scheduleGameEnd(buffered.winner, buffered.players[buffered.winner].deck, buffered.players[myRole].deck);
       }
     }
-  }, [pendingEnemyAttack, myRole, onGameEnd]);
+  }, [pendingEnemyAttack, myRole, scheduleGameEnd]);
 
   // Realtime subscription
   useEffect(() => {
@@ -73,7 +84,7 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
           }
           setGameState(incoming);
           if (incoming.winner) {
-            onGameEnd(incoming.winner, incoming.players[incoming.winner].deck, incoming.players[myRole].deck);
+            scheduleGameEnd(incoming.winner, incoming.players[incoming.winner].deck, incoming.players[myRole].deck);
           }
         }
       })
@@ -91,7 +102,7 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
 
     channelRef.current = channel;
     return () => { supabase.removeChannel(channel); channelRef.current = null; };
-  }, [matchId, myRole, onGameEnd]);
+  }, [matchId, myRole, scheduleGameEnd]);
 
   const handleIntent = useCallback(async (intent: Intent) => {
     if (!gameState || !matchData) return;
@@ -131,9 +142,9 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
     }).eq('id', matchId);
 
     if (newState.winner) {
-      onGameEnd(newState.winner, newState.players[newState.winner].deck, newState.players[myRole].deck);
+      scheduleGameEnd(newState.winner, newState.players[newState.winner].deck, newState.players[myRole].deck);
     }
-  }, [gameState, matchData, matchId, myRole, onGameEnd]);
+  }, [gameState, matchData, matchId, myRole, scheduleGameEnd]);
 
   // Brief fetch phase — show nothing while Supabase query resolves
   if (loading) {

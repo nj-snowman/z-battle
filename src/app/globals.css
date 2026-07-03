@@ -112,6 +112,34 @@ button {
   animation: fighter-shake 0.4s ease-in-out;
 }
 
+/* Full-board shake on the game-ending KO — bigger amplitude than a single fighter slot */
+@keyframes board-shake {
+  0%, 100% { transform: translate(0, 0); }
+  10% { transform: translate(-7px, 4px); }
+  20% { transform: translate(7px, -5px); }
+  30% { transform: translate(-6px, 5px); }
+  40% { transform: translate(6px, -4px); }
+  50% { transform: translate(-5px, 3px); }
+  60% { transform: translate(4px, -3px); }
+  70% { transform: translate(-3px, 2px); }
+  80% { transform: translate(2px, -2px); }
+  90% { transform: translate(-1px, 1px); }
+}
+
+.board-shake {
+  animation: board-shake 0.7s ease-out;
+}
+
+/* Win/loss overlay fade-in, so it reads as a deliberate reveal rather than a hard cut */
+@keyframes winner-overlay-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+.winner-overlay-in {
+  animation: winner-overlay-in 0.5s ease-out forwards;
+}
+
 @keyframes damage-float {
   0% { opacity: 1; transform: translate(-50%, -50%); }
   100% { opacity: 0; transform: translate(-50%, calc(-50% - 65px)); }
