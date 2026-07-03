@@ -425,7 +425,7 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
       s = { ...s, players: { ...s.players, [tp]: { ...player, actives: newActives, kiCurrent: player.kiCurrent - 1 } } };
 
       // Apply ultimate effect
-      s = applyUltimate(s, tp, opponent, ultAb, intent.targetIndex, intent.secondTargetIndex);
+      s = applyUltimate(s, tp, opponent, ultAb, intent.fighterIndex, intent.targetIndex, intent.secondTargetIndex);
       s = checkWinLoss(s);
       break;
     }
@@ -504,7 +504,7 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
   return s;
 }
 
-function applyUltimate(s: GameState, tp: PlayerId, opp: PlayerId, ab: any, targetIndex?: number, secondTargetIndex?: number): GameState {
+function applyUltimate(s: GameState, tp: PlayerId, opp: PlayerId, ab: any, casterIndex: number, targetIndex?: number, secondTargetIndex?: number): GameState {
   const p = ab.params as any;
   switch (ab.key) {
     case 'spirit_bomb':
@@ -515,7 +515,7 @@ function applyUltimate(s: GameState, tp: PlayerId, opp: PlayerId, ab: any, targe
         .filter((i): i is number => i !== null);
       for (const i of [...targets]) {
         if (s.players[opp].actives[i]) {
-          s = applyDamageToFighter(s, opp, 'active', i, p.damage, tp);
+          s = applyDamageToFighter(s, opp, 'active', i, p.damage, tp, casterIndex);
         }
       }
       break;
@@ -524,17 +524,17 @@ function applyUltimate(s: GameState, tp: PlayerId, opp: PlayerId, ab: any, targe
       if (targetIndex === undefined) throw new Error('Ultimate requires target');
       const target = s.players[opp].actives[targetIndex];
       if (!target) throw new Error('No target');
-      s = applyDamageToFighter(s, opp, 'active', targetIndex, p.damage, tp);
+      s = applyDamageToFighter(s, opp, 'active', targetIndex, p.damage, tp, casterIndex);
       break;
     }
     case 'special_beam_cannon': {
       if (targetIndex === undefined) throw new Error('Ultimate requires target');
       const target = s.players[opp].actives[targetIndex];
       if (!target) throw new Error('No target');
-      s = applyDamageToFighter(s, opp, 'active', targetIndex, p.damage, tp);
+      s = applyDamageToFighter(s, opp, 'active', targetIndex, p.damage, tp, casterIndex);
       // Chain to the bench slot directly behind the target, if occupied.
       if (s.players[opp].bench[targetIndex]) {
-        s = applyDamageToFighter(s, opp, 'bench', targetIndex, p.secondaryDamage, tp);
+        s = applyDamageToFighter(s, opp, 'bench', targetIndex, p.secondaryDamage, tp, casterIndex);
       }
       break;
     }
@@ -542,7 +542,7 @@ function applyUltimate(s: GameState, tp: PlayerId, opp: PlayerId, ab: any, targe
       if (targetIndex === undefined) throw new Error('Ultimate requires target');
       const target = s.players[opp].actives[targetIndex];
       if (!target) throw new Error('No target');
-      s = applyDamageToFighter(s, opp, 'active', targetIndex, p.damage, tp);
+      s = applyDamageToFighter(s, opp, 'active', targetIndex, p.damage, tp, casterIndex);
       // Frieza can't attack next turn
       const player = s.players[tp];
       const friezaIdx = player.actives.findIndex(f => f && f.cardId === 'frieza');
@@ -597,11 +597,11 @@ function applyUltimate(s: GameState, tp: PlayerId, opp: PlayerId, ab: any, targe
       // Resolve bench KOs before actives so a promotion queued by an active's death sees the final bench state.
       const benchTargets = s.players[opp].bench.map((f, i) => (f ? i : -1)).filter(i => i !== -1);
       for (const i of benchTargets) {
-        if (s.players[opp].bench[i]) s = applyDamageToFighter(s, opp, 'bench', i, p.damage, tp);
+        if (s.players[opp].bench[i]) s = applyDamageToFighter(s, opp, 'bench', i, p.damage, tp, casterIndex);
       }
       const activeTargets = s.players[opp].actives.map((f, i) => (f ? i : -1)).filter(i => i !== -1);
       for (const i of activeTargets) {
-        if (s.players[opp].actives[i]) s = applyDamageToFighter(s, opp, 'active', i, p.damage, tp);
+        if (s.players[opp].actives[i]) s = applyDamageToFighter(s, opp, 'active', i, p.damage, tp, casterIndex);
       }
       break;
     }
