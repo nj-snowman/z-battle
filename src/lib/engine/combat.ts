@@ -63,8 +63,8 @@ export function resolveKo(
     s.players = { ...s.players, [koDSide]: updatedKoPlayer };
   }
 
-  // Trigger Broly Legendary for BOTH players (any KO)
-  s = triggerLegendaryCounters(s);
+  // Trigger Broly Legendary (any KO, both players) and Kid Buu's Pure Evil (own KO only)
+  s = triggerLegendaryCounters(s, attackerSide, attackerIndex);
 
   // Trigger on-KO abilities of the KO'd fighter
   for (const ab of card.abilities) {
@@ -148,18 +148,23 @@ function triggerAbsorb(s: GameState, scoringSide: PlayerId, attackerIndex?: numb
   return s;
 }
 
-function triggerLegendaryCounters(s: GameState): GameState {
-  // Broly gets +500 ATK per KO (counters[ab.key]); Kid Buu's Pure Evil also grows maxHp/currentHp per KO
+function triggerLegendaryCounters(s: GameState, attackerSide?: PlayerId, attackerIndex?: number): GameState {
+  // Broly gets +500 ATK per KO scored by anyone (any_ko); Kid Buu's Pure Evil also
+  // grows maxHp/currentHp per KO, but only when Kid Buu itself scores it (own_ko).
   for (const side of ['p1', 'p2'] as PlayerId[]) {
     let player = s.players[side];
 
-    const bump = (f: NonNullable<typeof player.actives[0]>) => {
+    const bump = (f: NonNullable<typeof player.actives[0]>, isScoringFighter: boolean) => {
       const card = getCard(f.cardId);
       let updated = f;
       for (const ab of card.abilities) {
         if (ab.kind !== 'permanent_counter') continue;
         const p = ab.params as any;
-        if (p.trigger !== 'any_ko') continue;
+        if (p.trigger === 'own_ko') {
+          if (!isScoringFighter) continue;
+        } else if (p.trigger !== 'any_ko') {
+          continue;
+        }
         if (p.atkPerKo) {
           updated = { ...updated, counters: { ...updated.counters, [ab.key]: (updated.counters[ab.key] ?? 0) + 1 } };
         }
@@ -175,7 +180,7 @@ function triggerLegendaryCounters(s: GameState): GameState {
     for (let i = 0; i < player.actives.length; i++) {
       const f = player.actives[i];
       if (!f) continue;
-      const updated = bump(f);
+      const updated = bump(f, side === attackerSide && i === attackerIndex);
       if (updated !== f) { newActives[i] = updated; activesChanged = true; }
     }
     const newBench = [...player.bench] as typeof player.bench;
@@ -183,7 +188,7 @@ function triggerLegendaryCounters(s: GameState): GameState {
     for (let i = 0; i < player.bench.length; i++) {
       const f = player.bench[i];
       if (!f) continue;
-      const updated = bump(f);
+      const updated = bump(f, false); // bench fighters never score a KO themselves
       if (updated !== f) { newBench[i] = updated; benchChanged = true; }
     }
     if (activesChanged || benchChanged) {
