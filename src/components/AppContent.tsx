@@ -30,7 +30,7 @@ const AI_PLAYER: PlayerId = 'p2';
 
 // Let the battlefield's finishing-blow sequence (board shake, KO flash, narration,
 // then the VICTORY/DEFEAT reveal in GameBoard) play out before cutting to WinScreen.
-const WIN_SCREEN_DELAY_MS = 2800;
+const WIN_SCREEN_DELAY_MS = 3800;
 
 const DECK_OPTIONS = [
   { id: 'saiyan', name: 'Saiyan', color: '#ff7a18' },
@@ -72,6 +72,7 @@ export default function AppContent({ forceOfflineOnMount = false }: AppContentPr
   } | null>(null);
   const [pendingAiAttack, setPendingAiAttack] = useState<Intent | null>(null);
   const [pendingAiPlay, setPendingAiPlay] = useState<Intent | null>(null);
+  const [pendingAiUltimate, setPendingAiUltimate] = useState<Intent | null>(null);
 
   const [incomingChallenge, setIncomingChallenge] = useState<{
     matchId: string;
@@ -289,7 +290,7 @@ export default function AppContent({ forceOfflineOnMount = false }: AppContentPr
     if (!aiPlayer || screen !== 'game' || !gameState) return;
     if (gameState.turnPlayer !== aiPlayer) return;
     if (gameState.winner) return;
-    if (pendingAiAttack || pendingAiPlay) return;
+    if (pendingAiAttack || pendingAiPlay || pendingAiUltimate) return;
     if (gameState.pendingPromotions.length > 0) return;
     const timer = setTimeout(() => {
       const move = chooseMove(gameState, aiPlayer, aiDifficulty);
@@ -298,13 +299,15 @@ export default function AppContent({ forceOfflineOnMount = false }: AppContentPr
           setPendingAiAttack(move);
         } else if (move.type === 'play_item' || move.type === 'play_field') {
           setPendingAiPlay(move);
+        } else if (move.type === 'ultimate') {
+          setPendingAiUltimate(move);
         } else {
           handleIntent(move);
         }
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [aiPlayer, aiDifficulty, screen, gameState, handleIntent, pendingAiAttack, pendingAiPlay]);
+  }, [aiPlayer, aiDifficulty, screen, gameState, handleIntent, pendingAiAttack, pendingAiPlay, pendingAiUltimate]);
 
   function handleSetupStart(p1Deck: string, p2Deck: string, firstPlayer: PlayerId, mode: GameMode, difficulty: Difficulty) {
     setPendingSetup({ p1Deck, p2Deck, firstPlayer, mode, difficulty });
@@ -456,6 +459,11 @@ export default function AppContent({ forceOfflineOnMount = false }: AppContentPr
             pendingEnemyPlay={pendingAiPlay}
             onEnemyPlayDone={(intent) => {
               setPendingAiPlay(null);
+              handleIntent(intent);
+            }}
+            pendingEnemyUltimate={pendingAiUltimate}
+            onEnemyUltimateDone={(intent) => {
+              setPendingAiUltimate(null);
               handleIntent(intent);
             }}
           />

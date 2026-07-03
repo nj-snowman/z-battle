@@ -20,7 +20,7 @@ interface OnlineGameScreenProps {
 
 // Let GameBoard's finishing-blow sequence (board shake, KO flash, narration, then the
 // VICTORY/DEFEAT reveal) play out before the parent cuts away to WinScreen.
-const WIN_SCREEN_DELAY_MS = 2800;
+const WIN_SCREEN_DELAY_MS = 3800;
 
 export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onLeave }: OnlineGameScreenProps) {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -29,6 +29,7 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
   const [scoutDone, setScoutDone] = useState(false);
   const [pendingEnemyAttack, setPendingEnemyAttack] = useState<Intent | null>(null);
   const [pendingEnemyPlay, setPendingEnemyPlay] = useState<Intent | null>(null);
+  const [pendingEnemyUltimate, setPendingEnemyUltimate] = useState<Intent | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const lastWriteAtRef = useRef<string | null>(null);
   const isBeamActiveRef = useRef(false);
@@ -96,6 +97,8 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
           setPendingEnemyAttack(intent);
         } else if (intent.type === 'play_item' || intent.type === 'play_field') {
           setPendingEnemyPlay(intent);
+        } else if (intent.type === 'ultimate') {
+          setPendingEnemyUltimate(intent);
         }
       })
       .subscribe();
@@ -185,6 +188,8 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
       onEnemyAttackDone={() => setPendingEnemyAttack(null)}
       pendingEnemyPlay={pendingEnemyPlay}
       onEnemyPlayDone={() => setPendingEnemyPlay(null)}
+      pendingEnemyUltimate={pendingEnemyUltimate}
+      onEnemyUltimateDone={() => setPendingEnemyUltimate(null)}
     />
   );
 }

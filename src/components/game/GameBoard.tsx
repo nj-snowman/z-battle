@@ -25,6 +25,8 @@ interface GameBoardProps {
   onEnemyAttackDone?: (intent: Intent) => void;
   pendingEnemyPlay?: Intent | null;
   onEnemyPlayDone?: (intent: Intent) => void;
+  pendingEnemyUltimate?: Intent | null;
+  onEnemyUltimateDone?: (intent: Intent) => void;
 }
 
 type SelectionMode =
@@ -143,7 +145,7 @@ function PlayerStatusBar({ state, myId, oppId }: { state: GameState; myId: Playe
 
 // ---- Main GameBoard ----
 
-export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pendingEnemyAttack, onEnemyAttackDone, pendingEnemyPlay, onEnemyPlayDone }: GameBoardProps) {
+export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pendingEnemyAttack, onEnemyAttackDone, pendingEnemyPlay, onEnemyPlayDone, pendingEnemyUltimate, onEnemyUltimateDone }: GameBoardProps) {
   const [selection, setSelection] = useState<SelectionMode>({ mode: 'idle' });
   const [pendingAttack, setPendingAttack] = useState<PendingAttack | null>(null);
   const [phaseButtonPressed, setPhaseButtonPressed] = useState(false);
@@ -554,33 +556,59 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     if (!board) { onEnemyAttackDone?.(intent); return; }
     if (beamTimerRef.current) clearTimeout(beamTimerRef.current);
 
-    const boardRect = board.getBoundingClientRect();
-    const aEl = board.querySelector(`[data-subslot="active"][data-index="${intent.attackerIndex}"][data-opp="true"]`);
-    const dEl = board.querySelector(`[data-subslot="active"][data-index="${intent.targetIndex}"][data-opp="false"]`);
+    const startBeam = () => {
+      const boardRect = board.getBoundingClientRect();
+      const aEl = board.querySelector(`[data-subslot="active"][data-index="${intent.attackerIndex}"][data-opp="true"]`);
+      const dEl = board.querySelector(`[data-subslot="active"][data-index="${intent.targetIndex}"][data-opp="false"]`);
 
-    let beamData: BeamStruggleData | null = null;
-    if (aEl && dEl) {
-      const aR = aEl.getBoundingClientRect();
-      const dR = dEl.getBoundingClientRect();
+      let beamData: BeamStruggleData | null = null;
+      if (aEl && dEl) {
+        const aR = aEl.getBoundingClientRect();
+        const dR = dEl.getBoundingClientRect();
+        const attackerFighter = oppPlayer.actives[intent.attackerIndex];
+        const defenderFighter = myPlayer.actives[intent.targetIndex];
+        let attackerCard: ReturnType<typeof getCard> | null = null;
+        let defenderCard: ReturnType<typeof getCard> | null = null;
+        try { attackerCard = attackerFighter ? getCard(attackerFighter.cardId) : null; } catch { attackerCard = null; }
+        try { defenderCard = defenderFighter ? getCard(defenderFighter.cardId) : null; } catch { defenderCard = null; }
+        beamData = {
+          attackerPos: { x: aR.left + aR.width / 2 - boardRect.left, y: aR.top + aR.height / 2 - boardRect.top },
+          defenderPos: { x: dR.left + dR.width / 2 - boardRect.left, y: dR.top + dR.height / 2 - boardRect.top },
+          attackerColor: beamColorFor(attackerCard),
+          defenderColor: beamColorFor(defenderCard),
+        };
+      }
+
+      setBeamStruggle(beamData);
+      beamTimerRef.current = setTimeout(() => {
+        setBeamStruggle(null);
+        if (!stateRef.current.winner) onEnemyAttackDone?.(intent);
+      }, 1500);
+    };
+
+    // Named special-move callout (Kaioken, Tri-Beam, one-shot abilities) for the
+    // opponent's attack — mirrors the local dispatchAttackWithBeam treatment.
+    let specialName: string | null = null;
+    if (intent.useKaioken || intent.useTriBeam || intent.useOneShotAbility) {
       const attackerFighter = oppPlayer.actives[intent.attackerIndex];
-      const defenderFighter = myPlayer.actives[intent.targetIndex];
-      let attackerCard: ReturnType<typeof getCard> | null = null;
-      let defenderCard: ReturnType<typeof getCard> | null = null;
-      try { attackerCard = attackerFighter ? getCard(attackerFighter.cardId) : null; } catch { attackerCard = null; }
-      try { defenderCard = defenderFighter ? getCard(defenderFighter.cardId) : null; } catch { defenderCard = null; }
-      beamData = {
-        attackerPos: { x: aR.left + aR.width / 2 - boardRect.left, y: aR.top + aR.height / 2 - boardRect.top },
-        defenderPos: { x: dR.left + dR.width / 2 - boardRect.left, y: dR.top + dR.height / 2 - boardRect.top },
-        attackerColor: beamColorFor(attackerCard),
-        defenderColor: beamColorFor(defenderCard),
-      };
+      if (attackerFighter) {
+        try {
+          const card = getCard(attackerFighter.cardId);
+          if (intent.useKaioken) specialName = card.abilities.find(a => a.key === 'kaioken')?.name ?? null;
+          else if (intent.useTriBeam) specialName = card.abilities.find(a => a.key === 'tri_beam')?.name ?? null;
+          else if (intent.useOneShotAbility) specialName = card.abilities.find(a => a.kind === 'one_shot_on_attack')?.name ?? null;
+        } catch { specialName = null; }
+      }
     }
 
-    setBeamStruggle(beamData);
-    beamTimerRef.current = setTimeout(() => {
-      setBeamStruggle(null);
-      if (!stateRef.current.winner) onEnemyAttackDone?.(intent);
-    }, 1500);
+    if (specialName) {
+      if (ultimateNameTimerRef.current) clearTimeout(ultimateNameTimerRef.current);
+      setUltimateNameText(specialName);
+      ultimateNameTimerRef.current = setTimeout(() => setUltimateNameText(null), 1350);
+      beamTimerRef.current = setTimeout(startBeam, 1350);
+    } else {
+      startBeam();
+    }
 
     return () => { if (beamTimerRef.current) clearTimeout(beamTimerRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -598,6 +626,21 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     return () => { if (itemAnimTimerRef.current) clearTimeout(itemAnimTimerRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingEnemyPlay]);
+
+  // ---- Enemy ultimate animation (AI/opponent uses an ultimate) ----
+  useEffect(() => {
+    if (!pendingEnemyUltimate || pendingEnemyUltimate.type !== 'ultimate') return;
+    const intent = pendingEnemyUltimate;
+    const fighter = oppPlayer.actives[intent.fighterIndex];
+    if (!fighter) { onEnemyUltimateDone?.(intent); return; }
+    startEnemyUltimateAnim(intent, fighter.cardId, () => onEnemyUltimateDone?.(intent));
+    return () => {
+      if (itemAnimTimerRef.current) clearTimeout(itemAnimTimerRef.current);
+      if (beamTimerRef.current) clearTimeout(beamTimerRef.current);
+      if (chainBeamTimerRef.current) clearTimeout(chainBeamTimerRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingEnemyUltimate]);
 
   // Auto-advance draw phase when all piles are exhausted
   useEffect(() => {
@@ -851,6 +894,113 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
         setItemPlayAnim(null);
         setItemAnimPhase('show');
         cardAnimLock.current = false;
+      }, 550);
+    }, 1500);
+  }
+
+  // Mirror of startUltimateAnim for an opponent's (AI or online) ultimate — the
+  // caster is now on the opponent's side (data-opp="true") and its targets are on
+  // ours (data-opp="false"); Manipulation similarly flips to force two of MY OWN
+  // actives to fight, since "enemy Active" from the opponent's perspective is me.
+  function startEnemyUltimateAnim(intent: Extract<Intent, { type: 'ultimate' }>, cardId: string, onDone: () => void) {
+    const board = boardRef.current;
+    if (!board) { onDone(); return; }
+    const boardRect = board.getBoundingClientRect();
+    const centerX = boardRect.width / 2;
+    const centerY = boardRect.height / 2;
+
+    let exitDx: number | null = null;
+    let exitDy: number | null = null;
+    const el = board.querySelector(`[data-subslot="active"][data-index="${intent.fighterIndex}"][data-opp="true"]`);
+    if (el) {
+      const r = el.getBoundingClientRect();
+      exitDx = (r.left + r.width / 2 - boardRect.left) - centerX;
+      exitDy = (r.top + r.height / 2 - boardRect.top) - centerY;
+    }
+
+    let ultimateName: string | null = null;
+    try {
+      const ultAb = getCard(cardId).abilities.find(ab => ab.kind === 'ultimate' || ab.kind === 'activated_one_shot');
+      ultimateName = ultAb?.name ?? null;
+    } catch { ultimateName = null; }
+    if (ultimateName) {
+      if (ultimateNameTimerRef.current) clearTimeout(ultimateNameTimerRef.current);
+      setUltimateNameText(ultimateName);
+      ultimateNameTimerRef.current = setTimeout(() => setUltimateNameText(null), 1350);
+    }
+
+    setItemPlayAnim({ cardId, exitDx, exitDy, exitType: 'fly', exitScale: 0.6 });
+    setItemAnimPhase('show');
+
+    itemAnimTimerRef.current = setTimeout(() => {
+      setItemAnimPhase('exit');
+
+      const finishOnce = () => { if (!stateRef.current.winner) onDone(); };
+
+      if (intent.targetIndex !== undefined) {
+        const isManipulation = intent.secondTargetIndex !== undefined;
+        const aEl = isManipulation
+          ? board.querySelector(`[data-subslot="active"][data-index="${intent.targetIndex}"][data-opp="false"]`)
+          : board.querySelector(`[data-subslot="active"][data-index="${intent.fighterIndex}"][data-opp="true"]`);
+        const dEl = isManipulation
+          ? board.querySelector(`[data-subslot="active"][data-index="${intent.secondTargetIndex}"][data-opp="false"]`)
+          : board.querySelector(`[data-subslot="active"][data-index="${intent.targetIndex}"][data-opp="false"]`);
+        if (aEl && dEl) {
+          const aR = aEl.getBoundingClientRect();
+          const dR = dEl.getBoundingClientRect();
+          const attackerFighter = isManipulation ? myPlayer.actives[intent.targetIndex] : oppPlayer.actives[intent.fighterIndex];
+          const defenderFighter = isManipulation ? myPlayer.actives[intent.secondTargetIndex!] : myPlayer.actives[intent.targetIndex];
+          let attackerCard: ReturnType<typeof getCard> | null = null;
+          let defenderCard: ReturnType<typeof getCard> | null = null;
+          try { attackerCard = attackerFighter ? getCard(attackerFighter.cardId) : null; } catch { attackerCard = null; }
+          try { defenderCard = defenderFighter ? getCard(defenderFighter.cardId) : null; } catch { defenderCard = null; }
+          const beamData: BeamStruggleData = {
+            attackerPos: { x: aR.left + aR.width / 2 - boardRect.left, y: aR.top + aR.height / 2 - boardRect.top },
+            defenderPos: { x: dR.left + dR.width / 2 - boardRect.left, y: dR.top + dR.height / 2 - boardRect.top },
+            attackerColor: beamColorFor(attackerCard),
+            defenderColor: beamColorFor(defenderCard),
+            isUltimate: true,
+          };
+          setBeamStruggle(beamData);
+
+          // Piccolo's Special Beam Cannon chains through to the bench slot directly behind the target.
+          let chainBeamData: ChainBeamData | null = null;
+          if (cardId === 'piccolo' && myPlayer.bench[intent.targetIndex]) {
+            const bEl = board.querySelector(`[data-subslot="bench"][data-index="${intent.targetIndex}"][data-opp="false"]`);
+            if (bEl) {
+              const bR = bEl.getBoundingClientRect();
+              chainBeamData = {
+                startPos: beamData.defenderPos,
+                endPos: { x: bR.left + bR.width / 2 - boardRect.left, y: bR.top + bR.height / 2 - boardRect.top },
+                color: beamData.attackerColor,
+              };
+            }
+          }
+
+          if (beamTimerRef.current) clearTimeout(beamTimerRef.current);
+          beamTimerRef.current = setTimeout(() => {
+            setBeamStruggle(null);
+            if (chainBeamData) {
+              setChainBeam(chainBeamData);
+              if (chainBeamTimerRef.current) clearTimeout(chainBeamTimerRef.current);
+              chainBeamTimerRef.current = setTimeout(() => {
+                setChainBeam(null);
+                finishOnce();
+              }, 550);
+            } else {
+              finishOnce();
+            }
+          }, 1500);
+        } else {
+          finishOnce();
+        }
+      } else {
+        finishOnce();
+      }
+
+      itemAnimTimerRef.current = setTimeout(() => {
+        setItemPlayAnim(null);
+        setItemAnimPhase('show');
       }, 550);
     }, 1500);
   }
