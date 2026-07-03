@@ -52,9 +52,9 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
         }
       }
 
-      if (canDeployActiveHero) break;
-
-      // Evolve — a Buu card cast onto a slot that already holds a lower-stage Buu, at a discount
+      // Evolve — a Buu card cast onto a slot that already holds a lower-stage Buu, at a discount.
+      // Not gated by canDeployActiveHero: evolving a benched Buu doesn't fill an empty active slot,
+      // but it's also not a "workaround" for skipping active deployment, so it should stay available.
       for (const cardId of ps.hand) {
         const card = getCard(cardId);
         if (card.cardType !== 'hero' || card.subtype !== 'buu') continue;
@@ -74,6 +74,8 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
           }
         }
       }
+
+      if (canDeployActiveHero) break;
 
       // Play items
       for (const cardId of ps.hand) {

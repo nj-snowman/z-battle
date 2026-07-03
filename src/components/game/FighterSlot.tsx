@@ -466,17 +466,31 @@ export default function FighterSlot({
           </div>
         )}
 
-        {/* Permanent counter badge (Broly, Cooler, Kid Buu, etc.) */}
+        {/* Stacking counter badge (Broly, Cooler, Kid Buu, Super Buu, Assimilate, etc.) */}
         {card && (() => {
           const segments: string[] = [];
           for (const ab of card.abilities) {
-            if (ab.kind !== 'permanent_counter') continue;
-            const count = fighter.counters[ab.key] ?? 0;
-            if (count <= 0) continue;
             const p = ab.params as any;
-            if (p.atkPerKo) segments.push(`+${count * p.atkPerKo / 1000}k`);
-            if (p.defPerTurn) segments.push(`+${count * p.defPerTurn / 1000}k`);
-            if (p.hpPerKo) segments.push(`+${count * p.hpPerKo / 1000}k`);
+            if (ab.kind === 'permanent_counter') {
+              const count = fighter.counters[ab.key] ?? 0;
+              if (count <= 0) continue;
+              if (p.atkPerKo) segments.push(`+${count * p.atkPerKo / 1000}k`);
+              if (p.defPerTurn) segments.push(`+${count * p.defPerTurn / 1000}k`);
+              if (p.hpPerKo) segments.push(`+${count * p.hpPerKo / 1000}k`);
+            } else if (ab.kind === 'triggered_on_ko' && p.onlyOnOwnKo && p.atkPerKo) {
+              const count = fighter.counters[ab.key] ?? 0;
+              if (count > 0) segments.push(`+${count * p.atkPerKo / 1000}k`);
+            }
+          }
+          for (const itemId of fighter.equipment) {
+            const item = getCard(itemId);
+            for (const ab of item.abilities) {
+              if (ab.kind !== 'attach_trigger') continue;
+              const p = ab.params as any;
+              if (p.grants !== 'triggered_on_ko' || !p.onlyOnOwnKo || !p.atkPerKo) continue;
+              const count = fighter.counters[ab.key] ?? 0;
+              if (count > 0) segments.push(`+${count * p.atkPerKo / 1000}k`);
+            }
           }
           if (segments.length === 0) return null;
           return (
