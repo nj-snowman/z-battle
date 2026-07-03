@@ -15,7 +15,6 @@ function makeEmptyPlayer(deckId: string): PlayerState {
     piles: { hero: [], item: [] },
     actives: [null, null],
     bench: [null, null],
-    retreatUsedThisTurn: false,
     turnNumber: 1,
     friendlySaiyanKoedThisGame: false,
     activeBuuCounts: [0, 0],

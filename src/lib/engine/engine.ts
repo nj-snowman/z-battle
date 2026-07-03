@@ -42,7 +42,6 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
         nextPlayerState.turnNumber = nextPlayerState.turnNumber + 1;
         nextPlayerState.kiMax = Math.min(nextPlayerState.turnNumber, 8);
         nextPlayerState.kiCurrent = nextPlayerState.kiMax;
-        nextPlayerState.retreatUsedThisTurn = false;
         // Clear attacked flags and summoning sickness for next player's fighters
         nextPlayerState.actives = nextPlayerState.actives.map(f => {
           if (!f) return null;
@@ -312,7 +311,6 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
     case 'retreat': {
       if (s.phase !== 'main1') throw new Error('Can only retreat in Main Phase 1');
       const player = { ...s.players[tp] };
-      if (player.retreatUsedThisTurn) throw new Error('Already retreated this turn');
       if (player.kiCurrent < 1) throw new Error('Not enough Ki');
       const active = player.actives[intent.activeIndex];
       const bench = player.bench[intent.benchIndex];
@@ -320,10 +318,11 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
       if (active.cannotRetreatThisTurn) throw new Error('Fighter cannot retreat this turn');
 
       player.kiCurrent -= 1;
-      player.retreatUsedThisTurn = true;
       const newActives = [...player.actives] as typeof player.actives;
       const newBench = [...player.bench] as typeof player.bench;
-      newActives[intent.activeIndex] = bench;
+      // The fighter coming in off the bench takes over the slot's one retreat for
+      // the turn — it can't immediately retreat back out (cleared at end of turn).
+      newActives[intent.activeIndex] = { ...bench, cannotRetreatThisTurn: true };
       newBench[intent.benchIndex] = active;
       player.actives = newActives;
       player.bench = newBench;

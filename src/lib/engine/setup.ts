@@ -67,7 +67,6 @@ export function createInitialState(
     piles,
     actives: [null, null],
     bench: [null, null],
-    retreatUsedThisTurn: false,
     turnNumber: 0,
     friendlySaiyanKoedThisGame: false,
     activeBuuCounts: [0, 0],

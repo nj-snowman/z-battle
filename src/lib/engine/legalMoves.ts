@@ -171,8 +171,9 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
         moves.push({ type: 'play_field', cardId });
       }
 
-      // Retreat (Main 1 only)
-      if (state.phase === 'main1' && !ps.retreatUsedThisTurn && ps.kiCurrent >= 1) {
+      // Retreat (Main 1 only) — one retreat per active slot per turn, enforced via
+      // cannotRetreatThisTurn on whichever fighter currently occupies the slot.
+      if (state.phase === 'main1' && ps.kiCurrent >= 1) {
         for (let ai = 0; ai < ps.actives.length; ai++) {
           const af = ps.actives[ai];
           if (!af) continue;

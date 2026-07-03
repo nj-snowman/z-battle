@@ -32,7 +32,6 @@ export interface PlayerState {
   piles: { hero: string[]; item: string[] };
   actives: (FighterInstance | null)[];
   bench: (FighterInstance | null)[];
-  retreatUsedThisTurn: boolean;
   turnNumber: number; // this player's own turn count (for Ki curve)
   friendlySaiyanKoedThisGame: boolean; // for Nappa Rampage
   activeBuuCounts: [number, number]; // Buu evolve-chain depth per active slot; resets to 0 when the slot empties via KO
