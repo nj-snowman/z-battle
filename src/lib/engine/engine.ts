@@ -303,6 +303,11 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
       s = { ...s, players: { ...s.players, [tp]: player }, field: intent.cardId };
       if (oldField) s = { ...s, discard: [...s.discard, { cardId: oldField, owner: tp }] };
 
+      // Remove the outgoing field's HP bonus before granting the new field's — HP
+      // buffs are baked into maxHp/currentHp directly, unlike ATK/DEF which are
+      // recomputed live from state.field and vanish on their own.
+      if (oldField) s = removeFieldExitEffects(s, oldField);
+
       // Apply HP-granting field effects
       s = applyFieldEntryEffects(s, intent.cardId);
       break;
@@ -901,6 +906,36 @@ function applyFieldEntryEffects(s: GameState, fieldId: string): GameState {
           const c = getCard(f.cardId);
           if (!cardTypesOf(c).has(p.type)) return f;
           return { ...f, maxHp: f.maxHp + p.hp, currentHp: f.currentHp + p.hp };
+        }) as typeof player.bench;
+        s = { ...s, players: { ...s.players, [side]: player } };
+      }
+    }
+  }
+  return s;
+}
+
+// Mirrors applyFieldEntryEffects in reverse — undoes a field's baked-in HP bonus
+// when it leaves play. currentHp is floored at 1 so a passive field swap can never
+// retroactively KO a fighter that's currently below the reduced max.
+function removeFieldExitEffects(s: GameState, fieldId: string): GameState {
+  const fieldCard = getCard(fieldId);
+  for (const ab of fieldCard.abilities) {
+    if (ab.kind === 'field_type_buff') {
+      const p = ab.params as any;
+      if (!p.hp) continue;
+      for (const side of ['p1', 'p2'] as PlayerId[]) {
+        const player = { ...s.players[side] };
+        player.actives = player.actives.map(f => {
+          if (!f) return null;
+          const c = getCard(f.cardId);
+          if (!cardTypesOf(c).has(p.type)) return f;
+          return { ...f, maxHp: f.maxHp - p.hp, currentHp: Math.max(1, f.currentHp - p.hp) };
+        }) as typeof player.actives;
+        player.bench = player.bench.map(f => {
+          if (!f) return null;
+          const c = getCard(f.cardId);
+          if (!cardTypesOf(c).has(p.type)) return f;
+          return { ...f, maxHp: f.maxHp - p.hp, currentHp: Math.max(1, f.currentHp - p.hp) };
         }) as typeof player.bench;
         s = { ...s, players: { ...s.players, [side]: player } };
       }
