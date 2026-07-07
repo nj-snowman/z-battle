@@ -93,6 +93,9 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
 
       const slots = intent.slot === 'active' ? [...player.actives] : [...player.bench];
       if (slots[intent.index] !== null) throw new Error('Slot occupied');
+      if (intent.slot === 'bench' && !player.actives.every(f => f !== null)) {
+        throw new Error('Both active slots must be filled before benching a hero');
+      }
 
       player.hand = player.hand.filter((_, i) => i !== handIdx);
       player.kiCurrent -= card.kiCost;

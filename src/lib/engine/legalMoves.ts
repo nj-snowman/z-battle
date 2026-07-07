@@ -36,12 +36,15 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
       });
 
       // Play heroes
+      const bothActivesFilled = ps.actives.every(f => f !== null);
       for (const cardId of ps.hand) {
         const card = getCard(cardId);
         if (card.cardType !== 'hero') continue;
         if (ps.kiCurrent < card.kiCost) continue;
+        // Bench is only offered once both active slots are filled — an empty
+        // active must be filled (or refilled after a KO) before benching a hero.
         const allowedSlots: Array<'active' | 'bench'> =
-          ps.turnNumber === 1 ? ['active'] : ['active', 'bench'];
+          ps.turnNumber === 1 || !bothActivesFilled ? ['active'] : ['active', 'bench'];
         for (const slot of allowedSlots) {
           const slots = slot === 'active' ? ps.actives : ps.bench;
           for (let i = 0; i < slots.length; i++) {
