@@ -666,24 +666,45 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     if (freeMoves.length > 0) return;
     // Don't auto-end while any bench promotion is pending (own side or opponent's)
     if (state.pendingPromotions.length > 0) return;
-    // In main1, if a fighter can attack for free (e.g. Android #17, 0-Ki cost) advance to
-    // battle instead of ending the turn so the player gets to use those attacks.
-    if (state.phase === 'main1' && moves.some(m => m.type === 'advance_phase')) {
-      const hasFreeAttacker = myPlayer.actives.some((f, i) => {
-        if (!f || f.summoningSick || f.hasAttackedThisTurn || f.statuses.some(s => s.key === 'stun')) return false;
-        return getEffectiveStats(f, 'active', i, perspectiveId, state).attackKiCost === 0;
-      });
-      if (hasFreeAttacker) {
-        onIntent({ type: 'advance_phase' });
+
+    let cancelled = false;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    let endTurnTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function proceed() {
+      if (cancelled) return;
+      // A card-play animation (e.g. a hero being summoned with the last of our Ki) may still
+      // be resolving — wait it out, otherwise the phase can flip to battle before the player
+      // ever sees the new hero land on the field.
+      if (cardAnimLock.current) {
+        pollTimer = setTimeout(proceed, 150);
         return;
       }
+      // In main1, if a fighter can attack for free (e.g. Android #17, 0-Ki cost) advance to
+      // battle instead of ending the turn so the player gets to use those attacks.
+      if (state.phase === 'main1' && moves.some(m => m.type === 'advance_phase')) {
+        const hasFreeAttacker = myPlayer.actives.some((f, i) => {
+          if (!f || f.summoningSick || f.hasAttackedThisTurn || f.statuses.some(s => s.key === 'stun')) return false;
+          return getEffectiveStats(f, 'active', i, perspectiveId, state).attackKiCost === 0;
+        });
+        if (hasFreeAttacker) {
+          onIntent({ type: 'advance_phase' });
+          return;
+        }
+      }
+      setNarration('OUT OF KI!');
+      endTurnTimer = setTimeout(() => {
+        setNarration(null);
+        onIntent({ type: 'end_turn' });
+      }, 900);
     }
-    setNarration('OUT OF KI!');
-    const t = setTimeout(() => {
-      setNarration(null);
-      onIntent({ type: 'end_turn' });
-    }, 900);
-    return () => clearTimeout(t);
+    proceed();
+
+    return () => {
+      cancelled = true;
+      if (pollTimer) clearTimeout(pollTimer);
+      if (endTurnTimer) clearTimeout(endTurnTimer);
+    };
   }, [state, isMyTurn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- Item / field card play animation ----

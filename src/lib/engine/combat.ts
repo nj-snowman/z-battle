@@ -98,6 +98,14 @@ export function resolveKo(
     }
   }
 
+  // A multi-target hit (e.g. Piccolo's Special Beam Cannon) can KO an active and the only
+  // bench fighter in the same resolution — the promotion queued above (or one queued earlier
+  // this turn) becomes unfulfillable. Drop it rather than leaving it stuck: legalMoves() blocks
+  // every action for both players while any pendingPromotions entry exists.
+  if (s.pendingPromotions.some(p => p.side === koDSide) && !s.players[koDSide].bench.some(b => b !== null)) {
+    s = { ...s, pendingPromotions: s.pendingPromotions.filter(p => p.side !== koDSide) };
+  }
+
   return s;
 }
 

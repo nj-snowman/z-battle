@@ -340,8 +340,28 @@ export function scoreMoveHeuristically(state: GameState, player: PlayerId, inten
     case 'play_field':
       return 250;
 
-    case 'retreat':
-      return -50; // situational, rarely the best move but not self-harming
+    case 'retreat': {
+      // Costs a Ki and gives up the tempo of acting this turn — only worth it when it fixes
+      // a real problem (a dying fighter, a spent/stunned one) or swaps in a clearly stronger
+      // fighter. Otherwise it should read as strictly worse than just doing nothing.
+      const active = ps.actives[intent.activeIndex];
+      const bench = ps.bench[intent.benchIndex];
+      if (!active || !bench) return -1000;
+
+      const activeStats = getEffectiveStats(active, 'active', intent.activeIndex, player, state);
+      const benchStats = getEffectiveStats(bench, 'bench', intent.benchIndex, player, state);
+      const activeHpFrac = active.currentHp / active.maxHp;
+      const benchHpFrac = bench.currentHp / bench.maxHp;
+      const activeSpent = active.hasAttackedThisTurn || active.statuses.some(s => s.key === 'stun');
+      const benchSpent = bench.hasAttackedThisTurn || bench.statuses.some(s => s.key === 'stun');
+      const powerGain = (benchStats.atk + benchStats.def) - (activeStats.atk + activeStats.def);
+
+      let score = -600;
+      if (activeHpFrac < 0.35 && benchHpFrac > activeHpFrac + 0.25) score += 1500; // pull a dying fighter to safety
+      if (activeSpent && !benchSpent) score += 400; // free up a stunned/already-acted fighter
+      if (powerGain > 800) score += Math.min(powerGain / 10, 300); // meaningfully stronger fighter waiting
+      return score;
+    }
 
     case 'draw':
       return intent.pile === 'hero' ? 100 : 90;

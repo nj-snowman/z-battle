@@ -88,5 +88,10 @@ export function evaluate(state: GameState, forPlayer: PlayerId): number {
   // 7. Ki curve position (long-horizon economic signal, smallest weight)
   score += (me.kiMax - them.kiMax) * 50;
 
+  // 8. Unspent Ki this turn — smallest weight of all. Without this, spending Ki on a move
+  // with no other upside (e.g. a retreat that doesn't fix anything) looks completely free
+  // to the search, since nothing else tracks the cost.
+  score += (me.kiCurrent - them.kiCurrent) * 10;
+
   return score;
 }

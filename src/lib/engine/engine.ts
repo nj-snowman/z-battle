@@ -457,6 +457,11 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
           s = { ...s, players: { ...s.players, [side]: player } };
         }
       }
+      // If multiple promotions were queued this turn but the bench didn't have enough
+      // fighters for all of them, drop whatever's left rather than leaving it stuck forever.
+      if (s.pendingPromotions.some(p => p.side === side) && !s.players[side].bench.some(b => b !== null)) {
+        s = { ...s, pendingPromotions: s.pendingPromotions.filter(p => p.side !== side) };
+      }
       s = checkWinLoss(s);
       break;
     }
