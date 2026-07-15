@@ -60,6 +60,12 @@ export default function DeckScoutModal({ p1Deck, p2Deck, isVsAi = false, onDone 
 
   useEffect(() => {
     const startTime = Date.now();
+    // Guards against React Strict Mode's dev-only double effect invocation: without this,
+    // the first invocation's image callbacks stay bound and keep incrementing the same
+    // countRef after the second invocation resets it, so `loaded` can exceed `total`
+    // (especially when art is missing and every onerror fires almost immediately) — which
+    // then pushes `filled` past 10 and crashes `'░'.repeat(10 - filled)` with a RangeError.
+    let cancelled = false;
 
     const allImages = [...new Set([...getDeckImages(p1Deck), ...getDeckImages(p2Deck)])];
     const n = allImages.length;
@@ -67,21 +73,23 @@ export default function DeckScoutModal({ p1Deck, p2Deck, isVsAi = false, onDone 
     countRef.current = 0;
 
     function finish(count: number) {
-      if (count < n || doneRef.current) return;
+      if (cancelled || count < n || doneRef.current) return;
       doneRef.current = true;
       const wait = Math.max(0, MIN_DISPLAY_MS - (Date.now() - startTime));
       setTimeout(() => {
+        if (cancelled) return;
         setReady(true);
         setTimeout(onDone, 400);
       }, wait);
     }
 
-    if (n === 0) { finish(0); return; }
+    if (n === 0) { finish(0); return () => { cancelled = true; }; }
 
     for (const path of allImages) {
       const img = new window.Image();
       const done = () => {
-        countRef.current += 1;
+        if (cancelled) return;
+        countRef.current = Math.min(countRef.current + 1, n);
         const c = countRef.current;
         setLoaded(c);
         finish(c);
@@ -90,12 +98,14 @@ export default function DeckScoutModal({ p1Deck, p2Deck, isVsAi = false, onDone 
       img.onerror = done;
       img.src = `/${path}`;
     }
+
+    return () => { cancelled = true; };
   // onDone is intentionally excluded — we only want this to run once on mount
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p1Deck, p2Deck]);
 
-  const pct = Math.round((loaded / total) * 100);
-  const filled = Math.round(pct / 10);
+  const pct = Math.min(100, Math.round((loaded / total) * 100));
+  const filled = Math.min(10, Math.max(0, Math.round(pct / 10)));
 
   const p1Label = DECK_LABELS[p1Deck] ?? p1Deck.toUpperCase();
   const p2Label = DECK_LABELS[p2Deck] ?? p2Deck.toUpperCase();

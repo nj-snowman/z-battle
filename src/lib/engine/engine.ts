@@ -1,7 +1,7 @@
 import { GameState, Intent, PlayerId, SlotType, FighterInstance, CardDef } from './types';
 import { getCard } from './cards';
-import { getEffectiveStats, cardTypesOf } from './buffs';
-import { resolveKo, applyDamageToFighter, resolveBasicAttack, promoteFromBench, promoteSpecific } from './combat';
+import { getEffectiveStats, cardTypesOf, classOf, isAbilityLocked } from './buffs';
+import { resolveKo, applyDamageToFighter, resolveBasicAttack, promoteFromBench, promoteSpecific, boostedAbilityDamage, findFriezaWrathOwner } from './combat';
 import { checkWinLoss } from './utils';
 import { makeFighterInstance } from './setup';
 
@@ -108,13 +108,15 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
         fighter = { ...fighter, maxHp: fighter.maxHp + fieldHpBonus, currentHp: fighter.currentHp + fieldHpBonus };
       }
 
-      // triggered_on_play effects
-      for (const ab of card.abilities) {
-        if (ab.kind === 'triggered_on_play') {
-          const p = ab.params as any;
-          if (p.bonusMaxHp) {
-            // Giant Namekian: +2000 max HP and current HP on entry
-            fighter = { ...fighter, maxHp: fighter.maxHp + p.bonusMaxHp, currentHp: fighter.currentHp + p.bonusMaxHp };
+      // triggered_on_play effects — disabled if this hero's class is locked out by the active field
+      if (!isAbilityLocked(card, s)) {
+        for (const ab of card.abilities) {
+          if (ab.kind === 'triggered_on_play') {
+            const p = ab.params as any;
+            if (p.bonusMaxHp) {
+              // Giant Namekian: +2000 max HP and current HP on entry
+              fighter = { ...fighter, maxHp: fighter.maxHp + p.bonusMaxHp, currentHp: fighter.currentHp + p.bonusMaxHp };
+            }
           }
         }
       }
@@ -141,8 +143,8 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
 
       s = { ...s, players: { ...s.players, [tp]: player } };
 
-      // Chiaotzu psychic_hold: stun one enemy Active on play
-      for (const ab of card.abilities) {
+      // Chiaotzu psychic_hold: stun one enemy Active on play — disabled while locked out
+      for (const ab of (isAbilityLocked(card, s) ? [] : card.abilities)) {
         if (ab.kind === 'triggered_on_play') {
           const p = ab.params as any;
           if (p.effect === 'stun' && p.target === 'one_enemy_active') {
@@ -343,13 +345,15 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
       if (attacker.statuses.some(st => st.key === 'stun')) throw new Error('Fighter is stunned');
 
       const attackerStats = getEffectiveStats(attacker, 'active', intent.attackerIndex, tp, s);
+      const attackerCardForLock = getCard(attacker.cardId);
+      const attackerLocked = isAbilityLocked(attackerCardForLock, s);
 
       let kiNeeded = attackerStats.attackKiCost;
       let extraDamage = 0;
       let ignoreDef = false;
 
-      // Kaioken: pay 2 extra Ki for +3000 damage
-      if (intent.useKaioken) {
+      // Kaioken: pay 2 extra Ki for +3000 damage — disabled while locked out
+      if (intent.useKaioken && !attackerLocked) {
         const card = getCard(attacker.cardId);
         const ab = card.abilities.find(a => a.key === 'kaioken');
         if (ab) {
@@ -358,8 +362,8 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
         }
       }
 
-      // One-shot on-attack ability (Krillin, Future Trunks, Recoome): ignore DEF
-      if (intent.useOneShotAbility) {
+      // One-shot on-attack ability (Krillin, Future Trunks, Recoome): ignore DEF — disabled while locked out
+      if (intent.useOneShotAbility && !attackerLocked) {
         const card = getCard(attacker.cardId);
         const ab = card.abilities.find(a => a.kind === 'one_shot_on_attack');
         if (ab && !attacker.oncePerGameUsed[ab.key]) {
@@ -373,8 +377,8 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
         }
       }
 
-      // Tri-Beam (Tien): pay 1000 HP, deal +2000 damage
-      if (intent.useTriBeam) {
+      // Tri-Beam (Tien): pay 1000 HP, deal +2000 damage — disabled while locked out
+      if (intent.useTriBeam && !attackerLocked) {
         const card = getCard(attacker.cardId);
         const ab = card.abilities.find(a => a.key === 'tri_beam');
         if (ab && !attacker.oncePerGameUsed[ab.key] && attacker.currentHp > 1000) {
@@ -413,6 +417,7 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
       if (fighter.statuses.some(st => st.key === 'stun')) throw new Error('Fighter is stunned');
 
       const card = getCard(fighter.cardId);
+      if (isAbilityLocked(card, s)) throw new Error('Ability is locked by the active field');
       const ultAb = card.abilities.find(ab => ab.kind === 'ultimate' || ab.kind === 'activated_one_shot');
       if (!ultAb) throw new Error('Fighter has no ultimate');
       if (fighter.oncePerGameUsed[ultAb.key]) throw new Error('Ultimate already used');
@@ -428,7 +433,7 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
       s = { ...s, players: { ...s.players, [tp]: { ...player, actives: newActives, kiCurrent: player.kiCurrent - 1 } } };
 
       // Apply ultimate effect
-      s = applyUltimate(s, tp, opponent, ultAb, intent.fighterIndex, intent.targetIndex, intent.secondTargetIndex);
+      s = applyUltimate(s, tp, opponent, ultAb, intent.fighterIndex, intent.targetIndex, intent.secondTargetIndex, intent.targetSide);
       s = checkWinLoss(s);
       break;
     }
@@ -441,7 +446,11 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
       s = promoteSpecific(s, side, activeIndex, intent.benchIndex);
       if (friezaWrathPending) {
         const promoted = s.players[side].actives[activeIndex];
-        if (promoted) s = applyDamageToFighter(s, side, 'active', activeIndex, 2000);
+        if (promoted) {
+          const wrathOwner = pending.attackerSide !== undefined ? findFriezaWrathOwner(s, pending.attackerSide) : null;
+          const dmg = boostedAbilityDamage(s, wrathOwner, 2000);
+          s = applyDamageToFighter(s, side, 'active', activeIndex, dmg);
+        }
       }
       if (daburaStunPending) {
         const promoted = s.players[side].actives[activeIndex];
@@ -512,8 +521,12 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
   return s;
 }
 
-function applyUltimate(s: GameState, tp: PlayerId, opp: PlayerId, ab: any, casterIndex: number, targetIndex?: number, secondTargetIndex?: number): GameState {
+function applyUltimate(s: GameState, tp: PlayerId, opp: PlayerId, ab: any, casterIndex: number, targetIndex?: number, secondTargetIndex?: number, targetSide?: SlotType): GameState {
   const p = ab.params as any;
+  const casterFighter = s.players[tp].actives[casterIndex];
+  const casterCard = casterFighter ? getCard(casterFighter.cardId) : null;
+  const boosted = (raw: number) => boostedAbilityDamage(s, casterCard, raw);
+
   switch (ab.key) {
     case 'spirit_bomb':
     case 'solar_kamehameha': {
@@ -523,26 +536,48 @@ function applyUltimate(s: GameState, tp: PlayerId, opp: PlayerId, ab: any, caste
         .filter((i): i is number => i !== null);
       for (const i of [...targets]) {
         if (s.players[opp].actives[i]) {
-          s = applyDamageToFighter(s, opp, 'active', i, p.damage, tp, casterIndex);
+          s = applyDamageToFighter(s, opp, 'active', i, boosted(p.damage), tp, casterIndex);
         }
       }
       break;
     }
-    case 'final_flash': {
+    case 'final_flash':
+    case 'thunder_flash':
+    case 'ultimate_kamehameha': {
       if (targetIndex === undefined) throw new Error('Ultimate requires target');
       const target = s.players[opp].actives[targetIndex];
       if (!target) throw new Error('No target');
-      s = applyDamageToFighter(s, opp, 'active', targetIndex, p.damage, tp, casterIndex);
+      s = applyDamageToFighter(s, opp, 'active', targetIndex, boosted(p.damage), tp, casterIndex);
+      break;
+    }
+    case 'senzu_stock': {
+      // Korin: heal a chosen friendly fighter (active or bench) by a flat amount, capped at max.
+      const side = targetSide ?? 'active';
+      if (targetIndex === undefined) throw new Error('Senzu Stock requires a target');
+      const player = s.players[tp];
+      const slots = side === 'active' ? player.actives : player.bench;
+      const target = slots[targetIndex];
+      if (!target) throw new Error('No target');
+      const healed = { ...target, currentHp: Math.min(target.currentHp + p.heal, target.maxHp) };
+      const newSlots = [...slots] as typeof slots;
+      newSlots[targetIndex] = healed;
+      s = {
+        ...s,
+        players: {
+          ...s.players,
+          [tp]: side === 'active' ? { ...player, actives: newSlots as typeof player.actives } : { ...player, bench: newSlots as typeof player.bench },
+        },
+      };
       break;
     }
     case 'special_beam_cannon': {
       if (targetIndex === undefined) throw new Error('Ultimate requires target');
       const target = s.players[opp].actives[targetIndex];
       if (!target) throw new Error('No target');
-      s = applyDamageToFighter(s, opp, 'active', targetIndex, p.damage, tp, casterIndex);
+      s = applyDamageToFighter(s, opp, 'active', targetIndex, boosted(p.damage), tp, casterIndex);
       // Chain to the bench slot directly behind the target, if occupied.
       if (s.players[opp].bench[targetIndex]) {
-        s = applyDamageToFighter(s, opp, 'bench', targetIndex, p.secondaryDamage, tp, casterIndex);
+        s = applyDamageToFighter(s, opp, 'bench', targetIndex, boosted(p.secondaryDamage), tp, casterIndex);
       }
       break;
     }
@@ -550,7 +585,7 @@ function applyUltimate(s: GameState, tp: PlayerId, opp: PlayerId, ab: any, caste
       if (targetIndex === undefined) throw new Error('Ultimate requires target');
       const target = s.players[opp].actives[targetIndex];
       if (!target) throw new Error('No target');
-      s = applyDamageToFighter(s, opp, 'active', targetIndex, p.damage, tp, casterIndex);
+      s = applyDamageToFighter(s, opp, 'active', targetIndex, boosted(p.damage), tp, casterIndex);
       // Frieza can't attack next turn
       const player = s.players[tp];
       const friezaIdx = player.actives.findIndex(f => f && f.cardId === 'frieza');
@@ -605,11 +640,11 @@ function applyUltimate(s: GameState, tp: PlayerId, opp: PlayerId, ab: any, caste
       // Resolve bench KOs before actives so a promotion queued by an active's death sees the final bench state.
       const benchTargets = s.players[opp].bench.map((f, i) => (f ? i : -1)).filter(i => i !== -1);
       for (const i of benchTargets) {
-        if (s.players[opp].bench[i]) s = applyDamageToFighter(s, opp, 'bench', i, p.damage, tp, casterIndex);
+        if (s.players[opp].bench[i]) s = applyDamageToFighter(s, opp, 'bench', i, boosted(p.damage), tp, casterIndex);
       }
       const activeTargets = s.players[opp].actives.map((f, i) => (f ? i : -1)).filter(i => i !== -1);
       for (const i of activeTargets) {
-        if (s.players[opp].actives[i]) s = applyDamageToFighter(s, opp, 'active', i, p.damage, tp, casterIndex);
+        if (s.players[opp].actives[i]) s = applyDamageToFighter(s, opp, 'active', i, boosted(p.damage), tp, casterIndex);
       }
       break;
     }
@@ -636,7 +671,7 @@ function applyUltimate(s: GameState, tp: PlayerId, opp: PlayerId, ab: any, caste
         .filter((i): i is number => i !== null);
       for (const i of [...targets]) {
         if (s.players[opp].actives[i]) {
-          s = applyDamageToFighter(s, opp, 'active', i, p.damage, tp);
+          s = applyDamageToFighter(s, opp, 'active', i, boosted(p.damage), tp);
         }
       }
       break;
@@ -660,7 +695,7 @@ function applyUltimate(s: GameState, tp: PlayerId, opp: PlayerId, ab: any, caste
       if (fighterIdx !== -1) {
         s = resolveKo(s, tp, 'active', fighterIdx, opp);
       }
-      s = applyDamageToFighter(s, opp, 'active', targetIndex, p.damage, tp);
+      s = applyDamageToFighter(s, opp, 'active', targetIndex, boosted(p.damage), tp);
       break;
     }
     default:
@@ -686,6 +721,15 @@ function applyItemAbility(
   const p = ab.params as any;
   switch (ab.kind) {
     case 'heal': {
+      if (p.target === 'all_own_fighters') {
+        // Angel's Grace: heal every friendly fighter (actives + bench) a flat amount, capped at max
+        const player = { ...s.players[tp] };
+        const healOne = (f: FighterInstance | null) => f ? { ...f, currentHp: Math.min(f.currentHp + p.heal, f.maxHp) } : f;
+        player.actives = player.actives.map(healOne) as typeof player.actives;
+        player.bench = player.bench.map(healOne) as typeof player.bench;
+        s = { ...s, players: { ...s.players, [tp]: player } };
+        break;
+      }
       if (targetSide === undefined || targetIndex === undefined) break;
       const player = { ...s.players[tp] };
       const slots = targetSide === 'active' ? [...player.actives] : [...player.bench];
@@ -890,15 +934,15 @@ function applyItemAbility(
 }
 
 // How much HP the currently active field grants a fighter of this card, if any
-// (e.g. Babidi's Spaceship for Majin, Frieza's Spaceship for Frieza Force).
+// (e.g. Cell Games Arena for Green, formerly Frieza's Spaceship for Frieza Force).
 function activeFieldHpBonusFor(s: GameState, card: CardDef): number {
   if (!s.field) return 0;
   const fieldCard = getCard(s.field);
   let bonus = 0;
   for (const ab of fieldCard.abilities) {
-    if (ab.kind === 'field_type_buff') {
+    if (ab.kind === 'field_class_buff') {
       const p = ab.params as any;
-      if (p.hp && cardTypesOf(card).has(p.type)) bonus += p.hp;
+      if (p.hp && classOf(card) === p.class) bonus += p.hp;
     }
   }
   return bonus;
@@ -907,22 +951,22 @@ function activeFieldHpBonusFor(s: GameState, card: CardDef): number {
 function applyFieldEntryEffects(s: GameState, fieldId: string): GameState {
   const fieldCard = getCard(fieldId);
   for (const ab of fieldCard.abilities) {
-    if (ab.kind === 'field_type_buff') {
+    if (ab.kind === 'field_class_buff') {
       const p = ab.params as any;
       if (!p.hp) continue;
-      // Apply HP buffs to existing fighters of that type
+      // Apply HP buffs to existing fighters of that class
       for (const side of ['p1', 'p2'] as PlayerId[]) {
         const player = { ...s.players[side] };
         player.actives = player.actives.map(f => {
           if (!f) return null;
           const c = getCard(f.cardId);
-          if (!cardTypesOf(c).has(p.type)) return f;
+          if (classOf(c) !== p.class) return f;
           return { ...f, maxHp: f.maxHp + p.hp, currentHp: f.currentHp + p.hp };
         }) as typeof player.actives;
         player.bench = player.bench.map(f => {
           if (!f) return null;
           const c = getCard(f.cardId);
-          if (!cardTypesOf(c).has(p.type)) return f;
+          if (classOf(c) !== p.class) return f;
           return { ...f, maxHp: f.maxHp + p.hp, currentHp: f.currentHp + p.hp };
         }) as typeof player.bench;
         s = { ...s, players: { ...s.players, [side]: player } };
@@ -938,7 +982,7 @@ function applyFieldEntryEffects(s: GameState, fieldId: string): GameState {
 function removeFieldExitEffects(s: GameState, fieldId: string): GameState {
   const fieldCard = getCard(fieldId);
   for (const ab of fieldCard.abilities) {
-    if (ab.kind === 'field_type_buff') {
+    if (ab.kind === 'field_class_buff') {
       const p = ab.params as any;
       if (!p.hp) continue;
       for (const side of ['p1', 'p2'] as PlayerId[]) {
@@ -946,13 +990,13 @@ function removeFieldExitEffects(s: GameState, fieldId: string): GameState {
         player.actives = player.actives.map(f => {
           if (!f) return null;
           const c = getCard(f.cardId);
-          if (!cardTypesOf(c).has(p.type)) return f;
+          if (classOf(c) !== p.class) return f;
           return { ...f, maxHp: f.maxHp - p.hp, currentHp: Math.max(1, f.currentHp - p.hp) };
         }) as typeof player.actives;
         player.bench = player.bench.map(f => {
           if (!f) return null;
           const c = getCard(f.cardId);
-          if (!cardTypesOf(c).has(p.type)) return f;
+          if (classOf(c) !== p.class) return f;
           return { ...f, maxHp: f.maxHp - p.hp, currentHp: Math.max(1, f.currentHp - p.hp) };
         }) as typeof player.bench;
         s = { ...s, players: { ...s.players, [side]: player } };
@@ -966,28 +1010,34 @@ function processEndOfTurn(s: GameState): GameState {
   const tp = s.turnPlayer;
   let player = { ...s.players[tp] };
 
-  // EOT heals from fighter abilities + equipment + Cooler counter
+  // EOT heals from fighter abilities + equipment + Cooler counter.
+  // Self-heals apply directly; "other_friendly_active"/"one_friendly_active" targets (Dende,
+  // Mr. Popo) and "all_own_kai" (Supreme Kai) are resolved in a second pass below since they
+  // need the whole board, not just the fighter's own instance.
   const processActive = (f: NonNullable<typeof player.actives[0]>): NonNullable<typeof player.actives[0]> => {
     const card = getCard(f.cardId);
     let hp = f.currentHp;
     let counters = { ...f.counters };
+    const locked = isAbilityLocked(card, s);
 
-    for (const ab of card.abilities) {
-      if (ab.kind === 'triggered_end_of_turn') {
-        const p = ab.params as any;
-        if (p.heal && p.target !== 'one_friendly_active') {
-          hp = Math.min(hp + p.heal, f.maxHp);
+    if (!locked) {
+      for (const ab of card.abilities) {
+        if (ab.kind === 'triggered_end_of_turn') {
+          const p = ab.params as any;
+          if (p.heal && p.target !== 'other_friendly_active' && p.target !== 'one_friendly_active' && p.target !== 'all_own_kai') {
+            hp = Math.min(hp + p.heal, f.maxHp);
+          }
         }
-      }
-      // Cooler: gains +500 DEF per surviving turn
-      if (ab.kind === 'permanent_counter') {
-        const p = ab.params as any;
-        if (p.defPerTurn) {
-          counters = { ...counters, fifth_form: (counters.fifth_form ?? 0) + 1 };
+        // Cooler: gains +500 DEF per surviving turn
+        if (ab.kind === 'permanent_counter') {
+          const p = ab.params as any;
+          if (p.defPerTurn) {
+            counters = { ...counters, fifth_form: (counters.fifth_form ?? 0) + 1 };
+          }
         }
       }
     }
-    // Equipment triggers
+    // Equipment triggers — item-sourced, never locked
     for (const itemId of f.equipment) {
       const item = getCard(itemId);
       for (const ab of item.abilities) {
@@ -1005,48 +1055,83 @@ function processEndOfTurn(s: GameState): GameState {
   player.actives = player.actives.map(f => f ? processActive(f) : null) as typeof player.actives;
   player.bench = player.bench.map(f => f ? processActive(f) : null) as typeof player.bench;
 
-  // Dende healer: heal one friendly Active 1,500 (the one that isn't Dende)
-  const dendeIdx = player.actives.findIndex(f => f && f.cardId === 'dende');
-  if (dendeIdx !== -1) {
-    const healTargetIdx = player.actives.findIndex((f, i) => i !== dendeIdx && f !== null);
-    if (healTargetIdx !== -1) {
+  // "Heal your other Active" abilities (Dende's Healer, Mr. Popo's Caretaker) — data-driven,
+  // any hero with a triggered_end_of_turn ability targeting the other active qualifies.
+  for (let i = 0; i < player.actives.length; i++) {
+    const source = player.actives[i];
+    if (!source) continue;
+    const sourceCard = getCard(source.cardId);
+    if (isAbilityLocked(sourceCard, s)) continue;
+    for (const ab of sourceCard.abilities) {
+      if (ab.kind !== 'triggered_end_of_turn') continue;
+      const p = ab.params as any;
+      if (p.target !== 'other_friendly_active' && p.target !== 'one_friendly_active') continue;
+      const healTargetIdx = player.actives.findIndex((f, idx) => idx !== i && f !== null);
+      if (healTargetIdx === -1) continue;
       const target = player.actives[healTargetIdx]!;
       const newActives = [...player.actives] as typeof player.actives;
-      newActives[healTargetIdx] = { ...target, currentHp: Math.min(target.currentHp + 1500, target.maxHp) };
+      newActives[healTargetIdx] = { ...target, currentHp: Math.min(target.currentHp + p.heal, target.maxHp) };
       player.actives = newActives;
     }
   }
 
-  // Field EOT heals
+  // "Heal all your Kai fighters" (Supreme Kai's Divine Guidance)
+  for (const f of [...player.actives, ...player.bench]) {
+    if (!f) continue;
+    const card = getCard(f.cardId);
+    if (isAbilityLocked(card, s)) continue;
+    for (const ab of card.abilities) {
+      if (ab.kind !== 'triggered_end_of_turn') continue;
+      const p = ab.params as any;
+      if (p.target !== 'all_own_kai') continue;
+      const healKai = (fx: FighterInstance | null) =>
+        fx && cardTypesOf(getCard(fx.cardId)).has('kai')
+          ? { ...fx, currentHp: Math.min(fx.currentHp + p.heal, fx.maxHp) }
+          : fx;
+      player.actives = player.actives.map(healKai) as typeof player.actives;
+      player.bench = player.bench.map(healKai) as typeof player.bench;
+    }
+  }
+
+  // Field EOT effects
   if (s.field) {
     const fieldCard = getCard(s.field);
+    const healByClass = (heal: number, cls: string) => {
+      const applyHeal = (f: FighterInstance | null) =>
+        f && classOf(getCard(f.cardId)) === cls ? { ...f, currentHp: Math.min(f.currentHp + heal, f.maxHp) } : f;
+      player.actives = player.actives.map(applyHeal) as typeof player.actives;
+      player.bench = player.bench.map(applyHeal) as typeof player.bench;
+    };
     for (const ab of fieldCard.abilities) {
-      if (ab.kind === 'field_type_heal') {
+      if (ab.kind === 'field_class_heal') {
         const p = ab.params as any;
-        player.actives = player.actives.map(f => {
-          if (!f) return null;
-          if (!cardTypesOf(getCard(f.cardId)).has(p.type)) return f;
-          return { ...f, currentHp: Math.min(f.currentHp + p.heal, f.maxHp) };
-        }) as typeof player.actives;
-        player.bench = player.bench.map(f => {
-          if (!f) return null;
-          if (!cardTypesOf(getCard(f.cardId)).has(p.type)) return f;
-          return { ...f, currentHp: Math.min(f.currentHp + p.heal, f.maxHp) };
-        }) as typeof player.bench;
-      } else if (ab.kind === 'field_type_buff') {
-        // Planet Namek also has healEndOfTurn
+        if (p.timing !== 'end_of_controller_turn') continue;
+        if (p.heal) healByClass(p.heal, p.class);
+        if (p.healPercent) {
+          const applyPctHeal = (f: FighterInstance | null) => {
+            if (!f || classOf(getCard(f.cardId)) !== p.class) return f;
+            const amount = Math.round(f.maxHp * (p.healPercent / 100));
+            return { ...f, currentHp: Math.min(f.currentHp + amount, f.maxHp) };
+          };
+          player.actives = player.actives.map(applyPctHeal) as typeof player.actives;
+          player.bench = player.bench.map(applyPctHeal) as typeof player.bench;
+        }
+      } else if (ab.kind === 'field_tricolor_heal') {
         const p = ab.params as any;
-        if (p.healEndOfTurn) {
-          player.actives = player.actives.map(f => {
-            if (!f) return null;
-            if (!cardTypesOf(getCard(f.cardId)).has(p.type)) return f;
-            return { ...f, currentHp: Math.min(f.currentHp + p.healEndOfTurn, f.maxHp) };
-          }) as typeof player.actives;
-          player.bench = player.bench.map(f => {
-            if (!f) return null;
-            if (!cardTypesOf(getCard(f.cardId)).has(p.type)) return f;
-            return { ...f, currentHp: Math.min(f.currentHp + p.healEndOfTurn, f.maxHp) };
-          }) as typeof player.bench;
+        const distinctColors = new Set(
+          [...player.actives, ...player.bench]
+            .filter((f): f is FighterInstance => !!f)
+            .map(f => classOf(getCard(f.cardId)))
+            .filter(Boolean)
+        ).size;
+        if (distinctColors >= 3) {
+          const applyPctHeal = (f: FighterInstance | null) => {
+            if (!f) return f;
+            const amount = Math.round(f.maxHp * (p.healPercent / 100));
+            return { ...f, currentHp: Math.min(f.currentHp + amount, f.maxHp) };
+          };
+          player.actives = player.actives.map(applyPctHeal) as typeof player.actives;
+          player.bench = player.bench.map(applyPctHeal) as typeof player.bench;
         }
       }
     }

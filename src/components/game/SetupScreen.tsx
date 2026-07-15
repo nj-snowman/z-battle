@@ -23,7 +23,7 @@ interface SetupScreenProps {
   onlineFriendCount?: number;
 }
 
-const DECK_IDS = ['saiyan', 'namekian', 'android', 'human', 'frieza_force', 'majin'];
+const DECK_IDS = ['saiyan', 'namekian', 'android', 'human', 'frieza_force', 'majin', 'kai'];
 
 const DECK_OPTIONS = [
   { id: 'saiyan', name: 'Saiyan', color: '#ff7a18' },
@@ -32,6 +32,7 @@ const DECK_OPTIONS = [
   { id: 'human', name: 'Earthling', color: '#ffb648' },
   { id: 'frieza_force', name: 'Frieza Force', color: '#b44dff' },
   { id: 'majin', name: 'Majin', color: '#f03fcc' },
+  { id: 'kai', name: 'Kai', color: '#7de2e0' },
 ];
 
 function getDeckImages(deckId: string): string[] {

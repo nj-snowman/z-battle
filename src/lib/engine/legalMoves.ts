@@ -1,6 +1,6 @@
 import { GameState, PlayerId, Intent } from './types';
 import { getCard } from './cards';
-import { getEffectiveStats, isType, cardTypesOf } from './buffs';
+import { getEffectiveStats, isType, cardTypesOf, isAbilityLocked } from './buffs';
 
 export function legalMoves(state: GameState, player: PlayerId): Intent[] {
   if (state.winner) return [];
@@ -89,10 +89,14 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
         if (card.itemClass === 'consumable') {
           const abKind = card.abilities[0]?.kind;
           if (abKind === 'heal') {
-            for (const slot of ['active', 'bench'] as const) {
-              const slots = slot === 'active' ? ps.actives : ps.bench;
-              for (let i = 0; i < slots.length; i++) {
-                if (slots[i]) moves.push({ type: 'play_item', cardId, targetSide: slot, targetIndex: i });
+            if ((card.abilities[0].params as any).target === 'all_own_fighters') {
+              moves.push({ type: 'play_item', cardId });
+            } else {
+              for (const slot of ['active', 'bench'] as const) {
+                const slots = slot === 'active' ? ps.actives : ps.bench;
+                for (let i = 0; i < slots.length; i++) {
+                  if (slots[i]) moves.push({ type: 'play_item', cardId, targetSide: slot, targetIndex: i });
+                }
               }
             }
           } else if (abKind === 'direct_damage' || abKind === 'delayed_damage' || abKind === 'stun') {
@@ -207,6 +211,8 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
         if (f.statuses.some(st => st.key === 'stun')) continue;
 
         const stats = getEffectiveStats(f, 'active', i, player, state);
+        const card = getCard(f.cardId);
+        const locked = isAbilityLocked(card, state);
 
         // Normal attacks against each enemy active
         for (let ti = 0; ti < oppState.actives.length; ti++) {
@@ -214,17 +220,16 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
           if (ps.kiCurrent >= stats.attackKiCost || stats.attackKiCost === 0) {
             moves.push({ type: 'attack', attackerIndex: i, targetIndex: ti });
           }
-          // Kaioken option
-          const card = getCard(f.cardId);
+          // Kaioken option — disabled while locked out
           const kaioken = card.abilities.find(ab => ab.key === 'kaioken');
-          if (kaioken && ps.kiCurrent >= stats.attackKiCost + 2) {
+          if (kaioken && !locked && ps.kiCurrent >= stats.attackKiCost + 2) {
             moves.push({ type: 'attack', attackerIndex: i, targetIndex: ti, useKaioken: true });
           }
         }
 
-        // Ultimate (includes activated_one_shot abilities like Body Change, Self-Destruct)
-        const card = getCard(f.cardId);
-        const ult = card.abilities.find(ab => ab.kind === 'ultimate' || ab.kind === 'activated_one_shot');
+        // Ultimate (includes activated_one_shot abilities like Body Change, Self-Destruct) —
+        // disabled entirely while this hero's class is locked out by the active field.
+        const ult = locked ? undefined : card.abilities.find(ab => ab.kind === 'ultimate' || ab.kind === 'activated_one_shot');
         if (ult && !f.oncePerGameUsed[ult.key] && ps.kiCurrent >= 1) {
           const p = ult.params as any;
           if (p.target === 'all_enemy_actives' || p.target === 'all_enemy_fighters_including_bench') {
@@ -232,6 +237,13 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
           } else if (p.target === 'one_enemy_active') {
             for (let ti = 0; ti < oppState.actives.length; ti++) {
               if (oppState.actives[ti]) moves.push({ type: 'ultimate', fighterIndex: i, targetIndex: ti });
+            }
+          } else if (p.target === 'one_friendly_fighter') {
+            for (const slot of ['active', 'bench'] as const) {
+              const slots = slot === 'active' ? ps.actives : ps.bench;
+              for (let ti = 0; ti < slots.length; ti++) {
+                if (slots[ti]) moves.push({ type: 'ultimate', fighterIndex: i, targetSide: slot, targetIndex: ti });
+              }
             }
           } else if (p.target === 'manipulation') {
             const activeIdxs = oppState.actives

@@ -19,25 +19,28 @@ function mkPlayer(actives: (FighterInstance | null)[], hand: string[] = []): Pla
   };
 }
 
-test('evolving a Buu under an active field keeps the field HP bonus instead of losing it', () => {
-  // Majin Buu (Fat), base maxHp 6000, already carrying Babidi's Spaceship's +1000 HP.
-  const majinBuuFat = mkFighter('majin_buu_fat', { maxHp: 7000, currentHp: 7000 });
+test('evolving a Buu under an active field recomputes the field HP bonus for the new stage\'s class', () => {
+  // Evil Buu is class A (Green); Cell Games Arena grants Green fighters +500 HP.
+  // Evil Buu here is already carrying that +500 (maxHp 3000 base + 500).
+  const evilBuu = mkFighter('evil_buu', { maxHp: 3500, currentHp: 2500 }); // took 1000 damage while buffed
 
   let s: GameState = {
     turnPlayer: 'p1', turnNumber: 5, phase: 'main1', firstPlayer: 'p1',
-    field: 'babidis_spaceship', discard: [],
+    field: 'cell_games_arena', discard: [],
     pendingPromotions: [], winner: null, log: [], firstDamageDone: false,
     players: {
-      p1: mkPlayer([majinBuuFat, null], ['super_buu']),
+      p1: mkPlayer([evilBuu, null], ['majin_buu_fat']),
       p2: mkPlayer([null, null]),
     },
   };
 
-  s = applyIntent(s, { type: 'evolve', cardId: 'super_buu', slotSide: 'active', slotIndex: 0 });
+  s = applyIntent(s, { type: 'evolve', cardId: 'majin_buu_fat', slotSide: 'active', slotIndex: 0 });
 
-  const superBuu = s.players.p1.actives[0]!;
-  // Super Buu base maxHp is 7500 per cards.json; +1000 from the still-active field.
-  expect(superBuu.cardId).toBe('super_buu');
-  expect(superBuu.maxHp).toBe(8500);
-  expect(superBuu.currentHp).toBe(8500);
+  const fatBuu = s.players.p1.actives[0]!;
+  // Majin Buu (Fat) is class C (Yellow) — no longer matches Cell Games Arena's Green bonus,
+  // so the +500 HP is NOT carried over; maxHp is just the new stage's base 6000.
+  // The 1000 damage already taken still carries: 6000 - 1000 = 5000.
+  expect(fatBuu.cardId).toBe('majin_buu_fat');
+  expect(fatBuu.maxHp).toBe(6000);
+  expect(fatBuu.currentHp).toBe(5000);
 });

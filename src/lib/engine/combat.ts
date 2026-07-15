@@ -1,7 +1,25 @@
-import { GameState, PlayerId, PendingPromotion } from './types';
+import { GameState, PlayerId, PendingPromotion, CardDef } from './types';
 import { getCard } from './cards';
-import { getEffectiveStats, cardTypesOf } from './buffs';
+import { getEffectiveStats, cardTypesOf, classOf, isAbilityLocked } from './buffs';
 import { checkWinLoss } from './utils';
+
+// Multiplies flat hero-ability/ultimate damage when a matching `field_class_damage_boost`
+// field is in play and `abilityOwner` (the card whose ability is dealing the damage,
+// NOT necessarily the target) is that field's class. Never applies to basic attacks or
+// item damage — those aren't "hero abilities" per the ruling.
+function boostedAbilityDamage(state: GameState, abilityOwner: CardDef | null, rawDamage: number): number {
+  if (!abilityOwner || !state.field) return rawDamage;
+  const fieldCard = getCard(state.field);
+  for (const ab of fieldCard.abilities) {
+    if (ab.kind === 'field_class_damage_boost') {
+      const p = ab.params as any;
+      if (classOf(abilityOwner) === p.class) {
+        return Math.round(rawDamage * (1 + p.percent / 100));
+      }
+    }
+  }
+  return rawDamage;
+}
 
 // Produce a new state after a fighter at (side, slot, index) is KO'd.
 export function resolveKo(
@@ -63,16 +81,21 @@ export function resolveKo(
     s.players = { ...s.players, [koDSide]: updatedKoPlayer };
   }
 
-  // Trigger Broly Legendary (any KO, both players) and Kid Buu's Pure Evil (own KO only)
+  // Trigger Broly Legendary (any KO, both players) and Kid Buu's Pure Evil (own KO only) —
+  // counters don't accumulate for a locked-out fighter (its "gains a counter" trigger is disabled)
   s = triggerLegendaryCounters(s, attackerSide, attackerIndex);
 
-  // Trigger on-KO abilities of the KO'd fighter
-  for (const ab of card.abilities) {
-    if (ab.kind === 'triggered_on_ko') {
-      const p = ab.params as any;
-      if (p.damageToKoer && attackerIndex !== undefined) {
-        // Saibaman: deal damage to the attacker
-        s = applyDamageToFighter(s, attackerSide, 'active', attackerIndex, p.damageToKoer);
+  // Trigger on-KO abilities of the KO'd fighter (e.g. Saibaman) — disabled if the KO'd
+  // fighter's own class is locked out by the active field.
+  if (!isAbilityLocked(card, s)) {
+    for (const ab of card.abilities) {
+      if (ab.kind === 'triggered_on_ko') {
+        const p = ab.params as any;
+        if (p.damageToKoer && attackerIndex !== undefined) {
+          // Saibaman: deal damage to the attacker
+          const dmg = boostedAbilityDamage(s, card, p.damageToKoer);
+          s = applyDamageToFighter(s, attackerSide, 'active', attackerIndex, dmg);
+        }
       }
     }
   }
@@ -93,6 +116,7 @@ export function resolveKo(
         activeIndex: index,
         friezaWrathPending: hasFriezaWrathTrigger(s, attackerSide, attackerIndex),
         daburaStunPending: hasDaburaStunTrigger(s, attackerSide, attackerIndex),
+        attackerSide,
       };
       s = { ...s, pendingPromotions: [...s.pendingPromotions, entry] };
     }
@@ -112,7 +136,8 @@ export function resolveKo(
 function hasDaburaStunTrigger(s: GameState, attackerSide: PlayerId, attackerIndex?: number): boolean {
   if (attackerIndex === undefined) return false;
   const attacker = s.players[attackerSide].actives[attackerIndex];
-  return !!attacker && attacker.cardId === 'dabura';
+  if (!attacker || attacker.cardId !== 'dabura') return false;
+  return !isAbilityLocked(getCard(attacker.cardId), s);
 }
 
 function triggerAbsorb(s: GameState, scoringSide: PlayerId, attackerIndex?: number): GameState {
@@ -125,16 +150,19 @@ function triggerAbsorb(s: GameState, scoringSide: PlayerId, attackerIndex?: numb
   const counters = { ...f.counters };
   let changed = false;
 
-  for (const ab of card.abilities) {
-    if (ab.kind === 'triggered_on_ko') {
-      const p = ab.params as any;
-      if (p.onlyOnOwnKo && p.atkPerKo) {
-        counters[ab.key] = (counters[ab.key] ?? 0) + 1;
-        changed = true;
+  if (!isAbilityLocked(card, s)) {
+    for (const ab of card.abilities) {
+      if (ab.kind === 'triggered_on_ko') {
+        const p = ab.params as any;
+        if (p.onlyOnOwnKo && p.atkPerKo) {
+          counters[ab.key] = (counters[ab.key] ?? 0) + 1;
+          changed = true;
+        }
       }
     }
   }
 
+  // Equipment-granted (Assimilate) — item-sourced, never locked
   for (const itemId of f.equipment) {
     const item = getCard(itemId);
     for (const ab of item.abilities) {
@@ -159,11 +187,13 @@ function triggerAbsorb(s: GameState, scoringSide: PlayerId, attackerIndex?: numb
 function triggerLegendaryCounters(s: GameState, attackerSide?: PlayerId, attackerIndex?: number): GameState {
   // Broly gets +500 ATK per KO scored by anyone (any_ko); Kid Buu's Pure Evil also
   // grows maxHp/currentHp per KO, but only when Kid Buu itself scores it (own_ko).
+  // A locked-out fighter's counter simply doesn't advance this KO (it resumes once the lock ends).
   for (const side of ['p1', 'p2'] as PlayerId[]) {
     let player = s.players[side];
 
     const bump = (f: NonNullable<typeof player.actives[0]>, isScoringFighter: boolean) => {
       const card = getCard(f.cardId);
+      if (isAbilityLocked(card, s)) return f;
       let updated = f;
       for (const ab of card.abilities) {
         if (ab.kind !== 'permanent_counter') continue;
@@ -219,6 +249,7 @@ function triggerBioAbsorption(s: GameState, scoringSide: PlayerId): GameState {
     const f = player.actives[i];
     if (!f) continue;
     const card = getCard(f.cardId);
+    if (isAbilityLocked(card, s)) continue;
     for (const ab of card.abilities) {
       if (ab.kind === 'triggered_on_ko' && (ab.params as any).onlyOnOwnKo) {
         const p = ab.params as any;
@@ -244,6 +275,7 @@ function hasFriezaWrathTrigger(s: GameState, attackerSide: PlayerId, attackerInd
   for (const f of toCheck) {
     if (!f) continue;
     const card = getCard(f.cardId);
+    if (isAbilityLocked(card, s)) continue;
     for (const ab of card.abilities) {
       if (ab.kind === 'triggered_on_ko' && (ab.params as any).onlyOnOwnKo) {
         const p = ab.params as any;
@@ -252,6 +284,23 @@ function hasFriezaWrathTrigger(s: GameState, attackerSide: PlayerId, attackerInd
     }
   }
   return false;
+}
+
+// Re-finds the fighter whose on-KO ability queued the Emperor's Wrath-style follow-up
+// damage, so the delayed hit in `promote_from_bench` can apply the correct class-based
+// damage boost. Mirrors hasFriezaWrathTrigger's lookup.
+export function findFriezaWrathOwner(s: GameState, attackerSide: PlayerId): CardDef | null {
+  for (const f of s.players[attackerSide].actives) {
+    if (!f) continue;
+    const card = getCard(f.cardId);
+    if (isAbilityLocked(card, s)) continue;
+    for (const ab of card.abilities) {
+      if (ab.kind === 'triggered_on_ko' && (ab.params as any).onlyOnOwnKo && (ab.params as any).damageToPromoted) {
+        return card;
+      }
+    }
+  }
+  return null;
 }
 
 export function promoteFromBench(s: GameState, side: PlayerId, emptyActiveIndex: number): GameState {
@@ -287,7 +336,12 @@ export function promoteSpecific(s: GameState, side: PlayerId, emptyActiveIndex: 
   return { ...s, players: { ...s.players, [side]: { ...player, actives: newActives, bench: newBench } } };
 }
 
-export function applyDamageToFighter(
+interface DamageResult {
+  state: GameState;
+  actualDamage: number; // post-mitigation (first-hit halving, Barrier Field) — what actually landed
+}
+
+function applyDamageToFighterCore(
   s: GameState,
   side: PlayerId,
   slot: 'active' | 'bench',
@@ -295,17 +349,17 @@ export function applyDamageToFighter(
   damage: number,
   attackerSide?: PlayerId,
   attackerIndex?: number
-): GameState {
+): DamageResult {
   const player = { ...s.players[side] };
   const slots = slot === 'active' ? [...player.actives] : [...player.bench];
   const fighter = slots[index];
-  if (!fighter) return s;
+  if (!fighter) return { state: s, actualDamage: 0 };
 
-  // First instance of damage in the game deals half (rounded up to the nearest
-  // 500), regardless of source — basic attack, ultimate, item, or field damage.
+  // First instance of damage in the game deals an exact half, regardless of source —
+  // basic attack, ultimate, item, or field damage. No rounding convention is applied.
   let actualDamage = damage;
   if (!s.firstDamageDone) {
-    actualDamage = Math.ceil(actualDamage * 0.5 / 500) * 500;
+    actualDamage = Math.round(actualDamage * 0.5);
     s = { ...s, firstDamageDone: true };
   }
 
@@ -341,7 +395,19 @@ export function applyDamageToFighter(
     s = resolveKo(s, side, slot, index, attackerSide, attackerIndex);
   }
 
-  return s;
+  return { state: s, actualDamage };
+}
+
+export function applyDamageToFighter(
+  s: GameState,
+  side: PlayerId,
+  slot: 'active' | 'bench',
+  index: number,
+  damage: number,
+  attackerSide?: PlayerId,
+  attackerIndex?: number
+): GameState {
+  return applyDamageToFighterCore(s, side, slot, index, damage, attackerSide, attackerIndex).state;
 }
 
 function triggerOnDealDamage(s: GameState, attackerSide: PlayerId, attackerIndex: number, damageDealt: number): GameState {
@@ -402,31 +468,23 @@ export function resolveBasicAttack(
   let atkValue = attackerStats.atk;
 
   // Raditz/Dodoria "target_tier_is_basic" conditional
+  const attackerCard = getCard(attacker.cardId);
   const targetCard = getCard(target.cardId);
-  for (const ab of getCard(attacker.cardId).abilities) {
-    if (ab.kind === 'conditional') {
-      const p = ab.params as any;
-      if (p.condition === 'target_tier_is_basic' && targetCard.tier === 'basic') {
-        atkValue += p.atk ?? 0;
+  if (!isAbilityLocked(attackerCard, s)) {
+    for (const ab of attackerCard.abilities) {
+      if (ab.kind === 'conditional') {
+        const p = ab.params as any;
+        if (p.condition === 'target_tier_is_basic' && targetCard.tier === 'basic') {
+          atkValue += p.atk ?? 0;
+        }
       }
     }
   }
 
   const defValue = options?.useIgnoreDef ? 0 : targetStats.def;
 
-  // Field flat damage bonus
-  let fieldBonus = 0;
-  if (s.field) {
-    const fieldCard = getCard(s.field);
-    for (const ab of fieldCard.abilities) {
-      if (ab.kind === 'field_flat_damage') {
-        fieldBonus += (ab.params as any).allAttacksBonusDamage ?? 0;
-      }
-    }
-  }
-
   const rawDamage = atkValue - defValue;
-  const damage = Math.max(rawDamage, 500) + fieldBonus + (options?.extraDamage ?? 0);
+  const damage = Math.max(rawDamage, 500) + (options?.extraDamage ?? 0);
 
   // Mark fighter as having attacked
   const newActives = [...player.actives] as typeof player.actives;
@@ -441,9 +499,33 @@ export function resolveBasicAttack(
   }
 
   // Apply damage
-  s = applyDamageToFighter(s, targetSide, 'active', targetIndex, damage, attackerSide, attackerIndex);
+  const result = applyDamageToFighterCore(s, targetSide, 'active', targetIndex, damage, attackerSide, attackerIndex);
+  s = result.state;
+
+  // Dr. Gero's Lab: the attacker's field-based lifesteal is a FIELD effect (not a hero
+  // ability), so it applies regardless of lockout — heals 30% of damage actually dealt.
+  if (s.field && result.actualDamage > 0) {
+    const fieldCard = getCard(s.field);
+    for (const ab of fieldCard.abilities) {
+      if (ab.kind === 'field_class_lifesteal') {
+        const p = ab.params as any;
+        if (classOf(attackerCard) === p.class) {
+          const healAmount = Math.round(result.actualDamage * (p.percent / 100));
+          const pl = s.players[attackerSide];
+          const cur = pl.actives[attackerIndex];
+          if (cur && healAmount > 0) {
+            const healedActives = [...pl.actives] as typeof pl.actives;
+            healedActives[attackerIndex] = { ...cur, currentHp: Math.min(cur.currentHp + healAmount, cur.maxHp) };
+            s = { ...s, players: { ...s.players, [attackerSide]: { ...pl, actives: healedActives } } };
+          }
+        }
+      }
+    }
+  }
 
   s = checkWinLoss(s);
 
   return s;
 }
+
+export { boostedAbilityDamage };

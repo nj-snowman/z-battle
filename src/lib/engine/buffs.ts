@@ -13,6 +13,26 @@ export function isType(fighter: FighterInstance, t: string): boolean {
   return typesOf(fighter).has(t);
 }
 
+export function classOf(card: CardDef): string | undefined {
+  return card.class;
+}
+
+// True when a `field_lockout` field is in play and this card's class isn't the
+// protected one — its own printed abilities (passives, triggers, activated,
+// ultimates) go dark for as long as the lock holds. Equipment, items, and field
+// effects are separate cards and are never affected by this.
+export function isAbilityLocked(card: CardDef, state: GameState): boolean {
+  if (!state.field) return false;
+  const fieldCard = getCard(state.field);
+  for (const ab of fieldCard.abilities) {
+    if (ab.kind === 'field_lockout') {
+      const p = ab.params as any;
+      return classOf(card) !== p.class;
+    }
+  }
+  return false;
+}
+
 export interface EffectiveStats {
   atk: number;
   def: number;
@@ -29,13 +49,14 @@ export function getEffectiveStats(
 ): EffectiveStats {
   const card = getCard(fighter.cardId);
   const player = state.players[playerSide];
+  const selfLocked = isAbilityLocked(card, state);
 
   let atk = card.atk ?? 0;
   let def = card.def ?? 0;
   const hp = fighter.maxHp;
   let attackKiCost = 1;
 
-  // Equipment stat bonuses
+  // Equipment stat bonuses (never locked — equipment is a separate card)
   for (const itemId of fighter.equipment) {
     const item = getCard(itemId);
     for (const ab of item.abilities) {
@@ -48,44 +69,58 @@ export function getEffectiveStats(
     }
   }
 
-  // Android #17 static_modifier: attackKiCost = 0
-  for (const ab of card.abilities) {
-    if (ab.kind === 'static_modifier') {
+  if (!selfLocked) {
+    // Android #17 static_modifier: attackKiCost = 0
+    for (const ab of card.abilities) {
+      if (ab.kind === 'static_modifier') {
+        const p = ab.params as any;
+        if (p.attackKiCost === 0) attackKiCost = 0;
+      }
+    }
+
+    // Conditional abilities on THIS fighter
+    for (const ab of card.abilities) {
+      if (ab.kind !== 'conditional') continue;
       const p = ab.params as any;
-      if (p.attackKiCost === 0) attackKiCost = 0;
+      // Skip grantsToOtherActive — those are processed elsewhere
+      if (p.grantsToOtherActive) continue;
+      if (evaluateCondition(p.condition, fighter, slot, index, playerSide, state)) {
+        if (p.atk) atk += p.atk;
+        if (p.def) def += p.def;
+      }
+    }
+
+    // Permanent counters (key = the ability's own key, e.g. 'legendary', 'fifth_form', 'pure_evil')
+    for (const ab of card.abilities) {
+      if (ab.kind === 'permanent_counter') {
+        const p = ab.params as any;
+        if (p.atkPerKo) atk += (fighter.counters[ab.key] ?? 0) * p.atkPerKo;
+        if (p.defPerTurn) def += (fighter.counters[ab.key] ?? 0) * p.defPerTurn;
+      }
+    }
+
+    // Absorb-style stacking ATK from own-KO triggers (Super Buu's Absorb)
+    for (const ab of card.abilities) {
+      if (ab.kind === 'triggered_on_ko') {
+        const p = ab.params as any;
+        if (p.onlyOnOwnKo && p.atkPerKo) atk += (fighter.counters[ab.key] ?? 0) * p.atkPerKo;
+      }
+    }
+
+    // Cell-family scaling (Cell Jr.'s Cell Swarm): +ATK per OTHER in-play fighter
+    // (actives + bench) sharing the same family tag.
+    for (const ab of card.abilities) {
+      if (ab.kind === 'family_count_buff') {
+        const p = ab.params as any;
+        const others = [...player.actives, ...player.bench].filter(
+          (f): f is FighterInstance => !!f && f !== fighter && getCard(f.cardId).family === p.family
+        );
+        atk += others.length * (p.atkPerMember ?? 0);
+      }
     }
   }
 
-  // Conditional abilities on THIS fighter
-  for (const ab of card.abilities) {
-    if (ab.kind !== 'conditional') continue;
-    const p = ab.params as any;
-    // Skip grantsToOtherActive — those are processed elsewhere
-    if (p.grantsToOtherActive) continue;
-    if (evaluateCondition(p.condition, fighter, slot, index, playerSide, state)) {
-      if (p.atk) atk += p.atk;
-      if (p.def) def += p.def;
-    }
-  }
-
-  // Permanent counters (key = the ability's own key, e.g. 'legendary', 'fifth_form', 'pure_evil')
-  for (const ab of card.abilities) {
-    if (ab.kind === 'permanent_counter') {
-      const p = ab.params as any;
-      if (p.atkPerKo) atk += (fighter.counters[ab.key] ?? 0) * p.atkPerKo;
-      if (p.defPerTurn) def += (fighter.counters[ab.key] ?? 0) * p.defPerTurn;
-    }
-  }
-
-  // Absorb-style stacking ATK from own-KO triggers (Super Buu's Absorb)
-  for (const ab of card.abilities) {
-    if (ab.kind === 'triggered_on_ko') {
-      const p = ab.params as any;
-      if (p.onlyOnOwnKo && p.atkPerKo) atk += (fighter.counters[ab.key] ?? 0) * p.atkPerKo;
-    }
-  }
-
-  // Equipment-granted own-KO stacking ATK (Assimilate)
+  // Equipment-granted own-KO stacking ATK (Assimilate) — item-sourced, never locked
   for (const itemId of fighter.equipment) {
     const item = getCard(itemId);
     for (const ab of item.abilities) {
@@ -98,7 +133,8 @@ export function getEffectiveStats(
     }
   }
 
-  // Body-Change swap (Captain Ginyu): stored in counters.swappedAtk
+  // Body-Change swap (Captain Ginyu): stored in counters.swappedAtk — a resolved
+  // printed-stat swap, not an ongoing ability, so unaffected by lockout.
   if (fighter.counters['swappedAtk'] !== undefined) {
     atk = fighter.counters['swappedAtk'];
   }
@@ -106,6 +142,7 @@ export function getEffectiveStats(
   // Abilities from OTHER fighters (active or bench) that GRANT to this active fighter
   const checkGrantors = (grantor: FighterInstance, grantorSlot: 'active' | 'bench', grantorIdx: number) => {
     const grantorCard = getCard(grantor.cardId);
+    if (isAbilityLocked(grantorCard, state)) return; // the grantor's own ability is what's disabled
     for (const ab of grantorCard.abilities) {
       if (ab.kind !== 'conditional') continue;
       const p = ab.params as any;
@@ -131,23 +168,31 @@ export function getEffectiveStats(
     }
   }
 
-  // Field buffs
+  // Field buffs — field effects are never affected by lockout (they're the field's own effect)
   if (state.field) {
     const fieldCard = getCard(state.field);
     for (const ab of fieldCard.abilities) {
-      if (ab.kind === 'field_flat_buff') {
+      if (ab.kind === 'field_class_buff') {
         const p = ab.params as any;
-        if (p.allFighters?.def) def += p.allFighters.def;
-        if (p.allFighters?.atk) atk += p.allFighters.atk;
-      } else if (ab.kind === 'field_type_buff') {
-        const p = ab.params as any;
-        if (cardTypesOf(card).has(p.type)) {
+        if (classOf(card) === p.class) {
           if (p.atk) atk += p.atk;
           if (p.def) def += p.def;
+          // hp changes are baked into maxHp at field entry/exit, not recomputed here
         }
+      } else if (ab.kind === 'field_rainbow_buff') {
+        const p = ab.params as any;
+        const distinctColors = new Set(
+          [...player.actives, ...player.bench]
+            .filter((f): f is FighterInstance => !!f)
+            .map(f => classOf(getCard(f.cardId)))
+            .filter(Boolean)
+        ).size;
+        atk += distinctColors * (p.atkPerColor ?? 0);
       }
     }
   }
+
+  atk = Math.max(0, atk);
 
   return { atk, def, hp, attackKiCost };
 }
@@ -162,35 +207,30 @@ export function evaluateCondition(
 ): boolean {
   if (!condition) return true;
   const player = state.players[playerSide];
-  const card = getCard(fighter.cardId);
+
+  const anotherOwnActiveIsType = condition.match(/^another_own_active_is_(.+)$/);
+  if (anotherOwnActiveIsType) {
+    const type = anotherOwnActiveIsType[1];
+    const actives = player.actives;
+    for (let i = 0; i < actives.length; i++) {
+      if (i === index && slot === 'active') continue;
+      const other = actives[i];
+      if (other && cardTypesOf(getCard(other.cardId)).has(type)) return true;
+    }
+    return false;
+  }
 
   switch (condition) {
     case 'self_at_or_below_half_hp':
       return fighter.currentHp <= Math.floor(fighter.maxHp / 2);
+    case 'self_at_or_above_half_hp':
+      return fighter.currentHp >= Math.ceil(fighter.maxHp / 2);
     case 'self_at_full_hp':
       return fighter.currentHp === fighter.maxHp;
     case 'own_bench_empty':
       return player.bench.every(b => b === null);
     case 'own_bench_full':
       return player.bench.every(b => b !== null);
-    case 'another_own_active_is_namekian': {
-      const actives = player.actives;
-      for (let i = 0; i < actives.length; i++) {
-        if (i === index && slot === 'active') continue;
-        const other = actives[i];
-        if (other && cardTypesOf(getCard(other.cardId)).has('namekian')) return true;
-      }
-      return false;
-    }
-    case 'another_own_active_is_frieza_force': {
-      const actives = player.actives;
-      for (let i = 0; i < actives.length; i++) {
-        if (i === index && slot === 'active') continue;
-        const other = actives[i];
-        if (other && cardTypesOf(getCard(other.cardId)).has('frieza_force')) return true;
-      }
-      return false;
-    }
     case 'goku_is_own_active': {
       return player.actives.some(a => a && a.cardId === 'goku');
     }

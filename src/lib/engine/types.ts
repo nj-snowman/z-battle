@@ -54,6 +54,7 @@ export interface PendingPromotion {
   activeIndex: number;
   friezaWrathPending: boolean;
   daburaStunPending?: boolean;
+  attackerSide?: PlayerId; // whoever scored the KO — needed to apply class-based damage boosts to delayed effects (e.g. Frieza's Emperor's Wrath)
 }
 
 export interface GameState {
@@ -85,7 +86,9 @@ export interface CardDef {
   name: string;
   cardType: 'hero' | 'item' | 'field';
   fighterType?: string;
-  types?: string[]; // present only on dual-type cards (e.g. Majin Vegeta: ["majin","saiyan"])
+  types?: string[]; // present only on multi-type cards (e.g. Majin Vegeta: ["majin","saiyan"]; Ultimate Gohan: 3 types)
+  class?: 'A' | 'B' | 'C'; // heroes only — colour-only identity (A=Green, B=Purple, C=Yellow); fixed for the card's life
+  family?: string; // e.g. "cell" — cross-type kinship tag used by family-scaling abilities
   subtype?: string; // e.g. "buu" for the Buu evolve chain
   buuStage?: number; // 1..4, present on the four Buu chain cards
   tier?: 'basic' | 'mid' | 'high';
@@ -108,7 +111,7 @@ export type Intent =
   | { type: 'play_field'; cardId: string }
   | { type: 'retreat'; activeIndex: number; benchIndex: number }
   | { type: 'attack'; attackerIndex: number; targetIndex: number; useKaioken?: boolean; useOneShotAbility?: boolean; useTriBeam?: boolean }
-  | { type: 'ultimate'; fighterIndex: number; targetIndex?: number; secondTargetIndex?: number }
+  | { type: 'ultimate'; fighterIndex: number; targetIndex?: number; secondTargetIndex?: number; targetSide?: SlotType }
   | { type: 'evolve'; cardId: string; slotSide: SlotType; slotIndex: number }
   | { type: 'sacrifice'; side: SlotType; index: number }
   | { type: 'promote_from_bench'; benchIndex: number }

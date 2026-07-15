@@ -16,6 +16,19 @@ import AttackChoiceModal, { type AttackChoice } from './AttackChoiceModal';
 import CardZoomOverlay from './CardZoomOverlay';
 import DragonBallKi from './DragonBallKi';
 
+// Colour-only class identity (heroes only) — used purely as an interaction glow while a
+// hand card is being picked up/dragged; there's no other in-app UI for the class system.
+const CLASS_COLORS: Record<string, string> = { A: '#2eb85f', B: '#8257e6', C: '#f5c518' };
+
+function classGlowColor(cardId: string): string | null {
+  try {
+    const card = getCard(cardId);
+    return card.class ? CLASS_COLORS[card.class] ?? null : null;
+  } catch {
+    return null;
+  }
+}
+
 interface GameBoardProps {
   state: GameState;
   onIntent: (intent: Intent) => void;
@@ -2663,6 +2676,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
             const isPlayable = playableCards.has(cardId);
             const canDrag = isMyTurn && isPlayable && isMainPhase;
             const isHeld = heldCardOrigIdx === origIdx;
+            const glowColor = classGlowColor(cardId);
 
             return (
               <div
@@ -2752,8 +2766,10 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
                   transform: `rotate(${isHeld ? 0 : (i - fanCenter) * fanAngleStep}deg) translateY(${isHeld ? -20 : (Math.pow(i - fanCenter, 2) * 2.5 - (isHandSelected ? 38 : 0))}px) scale(${isHeld ? 1.5 : (isHandSelected ? 1.06 : 1)})`,
                   transformOrigin: 'center bottom',
                   zIndex: isHeld ? handCount + 20 : (isHandSelected ? handCount + 5 : i),
-                  transition: 'transform 0.15s ease, margin-left 0.2s ease',
+                  transition: 'transform 0.15s ease, margin-left 0.2s ease, box-shadow 0.15s ease',
                   marginLeft: i > 0 ? -overlap : 0,
+                  borderRadius: 8,
+                  boxShadow: isHeld && glowColor ? `0 0 22px 6px ${glowColor}` : 'none',
                 }}
               >
                 <HandCard cardId={cardId} isSelected={isHandSelected} />
@@ -2780,7 +2796,10 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
             transform: 'rotate(3deg) scale(1.08)',
             borderRadius: 8,
             overflow: 'hidden',
-            boxShadow: '0 12px 32px rgba(0,0,0,0.6)',
+            boxShadow: (() => {
+              const g = classGlowColor(drag.cardId);
+              return g ? `0 0 26px 8px ${g}, 0 12px 32px rgba(0,0,0,0.6)` : '0 12px 32px rgba(0,0,0,0.6)';
+            })(),
           }}
         >
           <HandCard cardId={drag.cardId} isSelected />

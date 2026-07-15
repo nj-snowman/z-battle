@@ -107,7 +107,7 @@ describe('chooseMoveSearch — multi-ply lookahead', () => {
         p1: {
           ...makeEmptyPlayer('human'),
           hand: ['senzu_bean'],
-          actives: [fighter('saiyan_brawler', { maxHp: 10000, currentHp: 7000 }), null], // def 0
+          actives: [fighter('saibaman', { maxHp: 9000, currentHp: 6500 }), null], // def 500 — Broly's 7000 ATK still deals exactly 6500, lethal
         },
         p2: {
           ...makeEmptyPlayer('human'),

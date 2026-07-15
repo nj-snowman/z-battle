@@ -47,7 +47,7 @@ describe('Ki curve', () => {
   it('Turn 1 P1 starts with 1 Ki', () => {
     const s = makeState({ phase: 'draw' });
     // Give p1 a card to draw so we can skip past draw phase
-    const s1 = { ...s, players: { ...s.players, p1: { ...s.players.p1, piles: { ...s.players.p1.piles, hero: ['saiyan_recruit'] } } } };
+    const s1 = { ...s, players: { ...s.players, p1: { ...s.players.p1, piles: { ...s.players.p1.piles, hero: ['saibaman'] } } } };
     const s2 = applyIntent(s1, { type: 'draw', pile: 'hero' });
     expect(s2.players.p1.kiCurrent).toBe(1);
     expect(s2.players.p1.kiMax).toBe(1);
@@ -95,9 +95,9 @@ describe('Ki curve', () => {
 // ---- Test 2: KO scoring ----
 describe('KO scoring', () => {
   it('Defeating a fighter increments koScoredAgainst on the KO\'d player', () => {
-    let s = makeState({ phase: 'battle' });
+    let s = makeState({ phase: 'battle', firstDamageDone: true });
     // P1 has a strong fighter, P2 has a weak fighter
-    const p1Fighter = makeFighterInstance('saiyan_brawler'); // 3000 ATK, 0 DEF
+    const p1Fighter = makeFighterInstance('saibaman'); // 2500 ATK, 500 DEF
     const p2Fighter = makeFighterInstance('namekian_child'); // 2500 ATK, 1000 DEF, 2500 HP
 
     s.players.p1.actives[0] = { ...p1Fighter, summoningSick: false };
@@ -118,7 +118,7 @@ describe('KO scoring', () => {
     let s = makeState({ phase: 'battle' });
     s.players.p2.koScoredAgainst = 2;
 
-    const p1Fighter = makeFighterInstance('saiyan_brawler');
+    const p1Fighter = makeFighterInstance('saibaman');
     const p2Fighter = makeFighterInstance('namekian_child');
 
     s.players.p1.actives[0] = { ...p1Fighter, summoningSick: false };
@@ -137,7 +137,7 @@ describe('Promotion from bench', () => {
   it('When active slot is KO\'d, bench fighter promotes to fill it', () => {
     let s = makeState({ phase: 'battle' });
 
-    const p1Fighter = makeFighterInstance('saiyan_brawler');
+    const p1Fighter = makeFighterInstance('saibaman');
     const p2ActiveFighter = makeFighterInstance('namekian_child');
     const p2BenchFighter = makeFighterInstance('dragon_clan_namekian');
 
@@ -156,7 +156,7 @@ describe('Promotion from bench', () => {
   it('When active has two slots and only one is KO\'d, other active remains', () => {
     let s = makeState({ phase: 'battle' });
 
-    const p1Fighter = makeFighterInstance('saiyan_brawler');
+    const p1Fighter = makeFighterInstance('saibaman');
     const p2Active0 = makeFighterInstance('namekian_child');
     const p2Active1 = makeFighterInstance('namekian_warrior');
     const p2Bench0 = makeFighterInstance('dragon_clan_namekian');
@@ -193,7 +193,7 @@ describe('Conditional buffs', () => {
   it("Nail does NOT gain +1000 DEF when no other Namekian is active", () => {
     let s = makeState({ phase: 'battle' });
     const nail = makeFighterInstance('nail');
-    const saiyan = makeFighterInstance('saiyan_recruit'); // not namekian
+    const saiyan = makeFighterInstance('saibaman'); // not namekian
 
     s.players.p1.actives[0] = { ...nail, summoningSick: false };
     s.players.p1.actives[1] = saiyan;
@@ -230,8 +230,8 @@ describe('Minimum 1000 damage rule', () => {
     let s = makeState({ phase: 'battle' });
     // Attacker ATK 1000, target DEF 5000 → raw = -4000, clamped to 1000
     const attacker = makeFighterInstance('namekian_child'); // ATK 2000, but we'll use a different setup
-    // Use saiyan_recruit: ATK 2000
-    const attackerF = makeFighterInstance('saiyan_recruit'); // ATK 2000
+    // Use saibaman: ATK 2000
+    const attackerF = makeFighterInstance('saibaman'); // ATK 2000
     // Target with high DEF — use kami: DEF 4000
     const targetF = makeFighterInstance('kami'); // ATK 5000, DEF 4000, HP 7000
 
@@ -242,15 +242,15 @@ describe('Minimum 1000 damage rule', () => {
     const initialHp = s.players.p2.actives[0]!.currentHp;
     s = applyIntent(s, { type: 'attack', attackerIndex: 0, targetIndex: 0 });
 
-    // saiyan_recruit ATK 2000 - kami DEF 4000 = -2000 → min 1000 damage
+    // saibaman ATK 2000 - kami DEF 4000 = -2000 → min 1000 damage
     const expectedHp = initialHp - 1000;
     expect(s.players.p2.actives[0]?.currentHp).toBe(expectedHp);
   });
 
   it('Attack where ATK > DEF deals the difference as damage', () => {
     let s = makeState({ phase: 'battle' });
-    const attackerF = makeFighterInstance('saiyan_brawler'); // ATK 3000, DEF 0
-    const targetF = makeFighterInstance('saiyan_recruit');   // ATK 2000, DEF 1000, HP 3000
+    const attackerF = makeFighterInstance('saibaman'); // ATK 3000, DEF 0
+    const targetF = makeFighterInstance('saibaman');   // ATK 2000, DEF 1000, HP 3000
 
     s.players.p1.actives[0] = { ...attackerF, summoningSick: false };
     s.players.p1.kiCurrent = 5;
@@ -267,7 +267,7 @@ describe('Minimum 1000 damage rule', () => {
 describe('Sacrifice does not score a KO', () => {
   it('Sacrificing a fighter does not increment opponent koScoredAgainst', () => {
     let s = makeState({ phase: 'main1' });
-    const fighter = makeFighterInstance('saiyan_recruit');
+    const fighter = makeFighterInstance('saibaman');
     s.players.p1.actives[0] = fighter;
     s.players.p1.kiCurrent = 5;
 
@@ -281,7 +281,7 @@ describe('Sacrifice does not score a KO', () => {
     let s = makeState({ phase: 'main1' });
     // P1 has 2 KOs scored against (p1 nearly lost)
     s.players.p1.koScoredAgainst = 2;
-    const fighter = makeFighterInstance('saiyan_recruit');
+    const fighter = makeFighterInstance('saibaman');
     s.players.p1.actives[0] = fighter;
     // Also give p2 an active so the board isn't empty
     s.players.p2.actives[0] = makeFighterInstance('dragon_clan_namekian');
@@ -376,7 +376,7 @@ describe('End-of-turn heals', () => {
 describe('Ki spending', () => {
   it('Normal attack costs 1 Ki', () => {
     let s = makeState({ phase: 'battle' });
-    const attacker = makeFighterInstance('saiyan_brawler');
+    const attacker = makeFighterInstance('saibaman');
     s.players.p1.actives[0] = { ...attacker, summoningSick: false };
     s.players.p1.kiCurrent = 3;
     s.players.p2.actives[0] = makeFighterInstance('dragon_clan_namekian');
@@ -403,13 +403,13 @@ describe('Ki spending', () => {
 describe('Play hero', () => {
   it('Playing a hero from hand puts it in the specified slot', () => {
     let s = makeState({ phase: 'main1' });
-    s.players.p1.hand = ['saiyan_recruit'];
+    s.players.p1.hand = ['saibaman'];
     s.players.p1.kiCurrent = 3;
 
-    s = applyIntent(s, { type: 'play_hero', cardId: 'saiyan_recruit', slot: 'active', index: 0 });
+    s = applyIntent(s, { type: 'play_hero', cardId: 'saibaman', slot: 'active', index: 0 });
 
-    expect(s.players.p1.actives[0]?.cardId).toBe('saiyan_recruit');
-    expect(s.players.p1.hand).not.toContain('saiyan_recruit');
+    expect(s.players.p1.actives[0]?.cardId).toBe('saibaman');
+    expect(s.players.p1.hand).not.toContain('saibaman');
     expect(s.players.p1.kiCurrent).toBe(2); // cost 1 Ki
     expect(s.players.p1.actives[0]?.summoningSick).toBe(true);
   });
@@ -438,10 +438,10 @@ describe('Phase transitions', () => {
 
   it('draw intent moves from draw to main1', () => {
     let s = makeState({ phase: 'draw' });
-    s.players.p1.piles.hero = ['saiyan_recruit'];
+    s.players.p1.piles.hero = ['saibaman'];
     s = applyIntent(s, { type: 'draw', pile: 'hero' });
     expect(s.phase).toBe('main1');
-    expect(s.players.p1.hand).toContain('saiyan_recruit');
+    expect(s.players.p1.hand).toContain('saibaman');
   });
 });
 
@@ -464,7 +464,7 @@ describe('Broly Legendary counter', () => {
   it('Broly gains a legendary counter each time any fighter is KO\'d', () => {
     let s = makeState({ phase: 'battle' });
     const broly = makeFighterInstance('broly');
-    const attacker = makeFighterInstance('saiyan_brawler');
+    const attacker = makeFighterInstance('saibaman');
     const target = makeFighterInstance('dragon_clan_namekian');
 
     s.players.p1.actives[0] = { ...broly };
@@ -505,25 +505,37 @@ describe('Kami guardian', () => {
   });
 });
 
-// ---- Test 15: Field buffs ----
+// ---- Test 15: Field buffs (now class-based; fields key off colour, not race) ----
 describe('Field buffs', () => {
-  it('Hyperbolic Time Chamber gives all Saiyans +2000 ATK', () => {
+  it('Hyperbolic Time Chamber (Green lockout) leaves a Green hero\'s conditional ability intact', () => {
     let s = makeState({ field: 'hyperbolic_time_chamber' });
-    const saiyan = makeFighterInstance('saiyan_recruit'); // ATK 2000
-    s.players.p1.actives[0] = saiyan;
+    const bardock = makeFighterInstance('bardock'); // class A (Green); last_stand +2000 ATK at/below half HP
+    s.players.p1.actives[0] = { ...bardock, currentHp: 3000 }; // exactly half of 6000
 
     const stats = getEffectiveStats(s.players.p1.actives[0]!, 'active', 0, 'p1', s);
-    // 2000 + 2000 = 4000
-    expect(stats.atk).toBe(4000);
+    expect(stats.atk).toBe(7000); // 5000 base + 2000 last_stand — Green still functions
   });
 
-  it('King Kai Planet gives all fighters +1000 DEF', () => {
-    let s = makeState({ field: 'king_kais_planet' });
-    const fighter = makeFighterInstance('saiyan_recruit'); // DEF 1000
-    s.players.p1.actives[0] = fighter;
+  it('Hyperbolic Time Chamber (Green lockout) disables a non-Green hero\'s conditional ability', () => {
+    let s = makeState({ field: 'hyperbolic_time_chamber' });
+    const lordSlug = makeFighterInstance('lord_slug'); // class B (Purple); tyrant +1000 ATK at full HP
+    s.players.p1.actives[0] = lordSlug; // starts at full HP
 
     const stats = getEffectiveStats(s.players.p1.actives[0]!, 'active', 0, 'p1', s);
-    expect(stats.def).toBe(2000); // 1000 + 1000
+    expect(stats.atk).toBe(4000); // base only — tyrant is locked out (not Green)
+  });
+
+  it('King Kai\'s Planet gives Green fighters +1000 ATK, and leaves other colours alone', () => {
+    let s = makeState({ field: 'king_kais_planet' });
+    const raditz = makeFighterInstance('raditz'); // class A (Green), ATK 3500
+    const drGero = makeFighterInstance('dr_gero_20'); // class C (Yellow), ATK 3000
+    s.players.p1.actives[0] = raditz;
+    s.players.p1.actives[1] = drGero;
+
+    const raditzStats = getEffectiveStats(s.players.p1.actives[0]!, 'active', 0, 'p1', s);
+    const geroStats = getEffectiveStats(s.players.p1.actives[1]!, 'active', 1, 'p1', s);
+    expect(raditzStats.atk).toBe(4500); // 3500 + 1000
+    expect(geroStats.atk).toBe(3000); // unaffected
   });
 });
 
@@ -532,7 +544,7 @@ describe('Win by empty board', () => {
   it("A player wins if opponent has no fighters left", () => {
     let s = makeState();
     // Give p1 a fighter so only p2 has an empty board
-    const p1Fighter = makeFighterInstance('saiyan_recruit');
+    const p1Fighter = makeFighterInstance('saibaman');
     s = {
       ...s,
       players: {
@@ -576,7 +588,7 @@ describe('Nappa Rampage', () => {
 describe('Equipment limit', () => {
   it('Cannot attach more than 2 equipment to a fighter', () => {
     let s = makeState({ phase: 'main1' });
-    const fighter = makeFighterInstance('saiyan_recruit');
+    const fighter = makeFighterInstance('saibaman');
     s.players.p1.actives[0] = { ...fighter, equipment: ['saiyan_armor', 'power_pole'] };
     s.players.p1.hand = ['weighted_clothing'];
     s.players.p1.kiCurrent = 5;
@@ -656,22 +668,27 @@ describe('Majin — Buu evolve chain', () => {
 });
 
 describe('Majin — dual type', () => {
-  it('V-M4: Majin Vegeta gets the Saiyan field buff, then the Majin field buff', () => {
-    let s = makeState({ phase: 'main1', field: 'hyperbolic_time_chamber' });
+  it('V-M4: fields key off class, not race — a multi-typed card is unaffected by an off-colour field', () => {
+    // Majin Vegeta (types: majin, saiyan) is class B (Purple). Babidi's Spaceship debuffs
+    // Green (A) fighters — Majin Vegeta's dual TYPE doesn't matter; only class does, and
+    // he isn't Green, so he's untouched. A Green fighter (Evil Buu) is affected.
+    let s = makeState({ phase: 'main1' });
     const mv = makeFighterInstance('majin_vegeta');
+    const evilBuu = makeFighterInstance('evil_buu'); // class A (Green)
     s.players.p1.actives[0] = mv;
+    s.players.p1.actives[1] = evilBuu;
 
     let stats = getEffectiveStats(s.players.p1.actives[0]!, 'active', 0, 'p1', s);
-    expect(stats.atk).toBe(8500); // 6500 base + 2000 Saiyan field (dual-type)
+    expect(stats.atk).toBe(6500); // base only — no field yet
 
     s.players.p1.hand = ['babidis_spaceship'];
     s.players.p1.kiCurrent = 1;
-    const baseMaxHp = s.players.p1.actives[0]!.maxHp;
     s = applyIntent(s, { type: 'play_field', cardId: 'babidis_spaceship' });
 
-    stats = getEffectiveStats(s.players.p1.actives[0]!, 'active', 0, 'p1', s);
-    expect(stats.atk).toBe(7500); // 6500 + 1000 Majin field
-    expect(s.players.p1.actives[0]?.maxHp).toBe(baseMaxHp + 1000); // field HP bonus applied on play
+    const mvStats = getEffectiveStats(s.players.p1.actives[0]!, 'active', 0, 'p1', s);
+    const buuStats = getEffectiveStats(s.players.p1.actives[1]!, 'active', 1, 'p1', s);
+    expect(mvStats.atk).toBe(6500); // Purple — unaffected by the Green debuff
+    expect(buuStats.atk).toBe(1000); // 2000 base - 1000 Green debuff
   });
 });
 
