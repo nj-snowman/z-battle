@@ -327,6 +327,24 @@ describe('Kai deck', () => {
     ).toThrow('already used');
   });
 
+  it("Korin's Senzu Stock works even while Korin is summoning-sick, unlike a normal ultimate", () => {
+    let s = makeState({ phase: 'battle' });
+    s.players.p1.actives[0] = fighter('korin', { summoningSick: true });
+    s.players.p1.bench[0] = fighter('king_yemma', { currentHp: 500 });
+    s.players.p2.actives[0] = fighter('dragon_clan_namekian');
+
+    s = applyIntent(s, { type: 'ultimate', fighterIndex: 0, targetSide: 'bench', targetIndex: 0 });
+    expect(s.players.p1.bench[0]?.currentHp).toBe(2500); // heal still landed
+
+    // Contrast: a freshly-played Vegeta (summoning-sick) can't use Final Flash —
+    // the bypass is specific to abilities flagged ignoresSummoningSickness.
+    const sickVegeta = makeState({ phase: 'battle' });
+    sickVegeta.players.p1.actives[0] = fighter('vegeta', { summoningSick: true });
+    sickVegeta.players.p2.actives[0] = fighter('dragon_clan_namekian');
+    expect(legalMoves(sickVegeta, 'p1').some(m => m.type === 'ultimate')).toBe(false);
+    expect(() => applyIntent(sickVegeta, { type: 'ultimate', fighterIndex: 0, targetIndex: 0 })).toThrow('summoning sick');
+  });
+
   it("Mr. Popo's Caretaker heals the other Active at end of turn", () => {
     let s = makeState({ phase: 'end', turnPlayer: 'p1' });
     s.players.p1.actives[0] = fighter('mr_popo');
@@ -337,16 +355,18 @@ describe('Kai deck', () => {
     expect(s.players.p1.actives[1]?.currentHp).toBe(2000); // + 1000
   });
 
-  it("Supreme Kai's Divine Guidance heals all own Kai fighters (actives + bench), not non-Kai", () => {
+  it("Supreme Kai's Divine Guidance heals all own Kai fighters 1,500 (actives + bench), not non-Kai", () => {
     let s = makeState({ phase: 'end', turnPlayer: 'p1' });
     s.players.p1.actives[0] = fighter('supreme_kai');
-    s.players.p1.actives[1] = fighter('king_yemma', { currentHp: 1000 }); // Kai
-    s.players.p1.bench[0] = fighter('raditz', { currentHp: 1000 }); // not Kai
+    s.players.p1.actives[1] = fighter('king_yemma', { currentHp: 1000 }); // Kai active
+    s.players.p1.bench[0] = fighter('korin', { currentHp: 500 }); // Kai on the bench
+    s.players.p1.bench[1] = fighter('raditz', { currentHp: 1000 }); // not Kai
 
     s = applyIntent(s, { type: 'advance_phase' });
 
-    expect(s.players.p1.actives[1]?.currentHp).toBe(2000); // Kai — healed
-    expect(s.players.p1.bench[0]?.currentHp).toBe(1000); // not Kai — untouched
+    expect(s.players.p1.actives[1]?.currentHp).toBe(2500); // Kai active — healed 1,500
+    expect(s.players.p1.bench[0]?.currentHp).toBe(2000); // Kai bench — healed 1,500 too
+    expect(s.players.p1.bench[1]?.currentHp).toBe(1000); // not Kai — untouched
   });
 
   it("Angel's Grace heals every friendly fighter 1,000, uncapped target selection", () => {

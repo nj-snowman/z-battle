@@ -207,30 +207,35 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
     case 'battle': {
       for (let i = 0; i < ps.actives.length; i++) {
         const f = ps.actives[i];
-        if (!f || f.summoningSick || f.hasAttackedThisTurn) continue;
+        if (!f || f.hasAttackedThisTurn) continue;
         if (f.statuses.some(st => st.key === 'stun')) continue;
 
         const stats = getEffectiveStats(f, 'active', i, player, state);
         const card = getCard(f.cardId);
         const locked = isAbilityLocked(card, state);
 
-        // Normal attacks against each enemy active
-        for (let ti = 0; ti < oppState.actives.length; ti++) {
-          if (!oppState.actives[ti]) continue;
-          if (ps.kiCurrent >= stats.attackKiCost || stats.attackKiCost === 0) {
-            moves.push({ type: 'attack', attackerIndex: i, targetIndex: ti });
-          }
-          // Kaioken option — disabled while locked out
-          const kaioken = card.abilities.find(ab => ab.key === 'kaioken');
-          if (kaioken && !locked && ps.kiCurrent >= stats.attackKiCost + 2) {
-            moves.push({ type: 'attack', attackerIndex: i, targetIndex: ti, useKaioken: true });
+        // Normal attacks against each enemy active — still blocked by summoning sickness
+        if (!f.summoningSick) {
+          for (let ti = 0; ti < oppState.actives.length; ti++) {
+            if (!oppState.actives[ti]) continue;
+            if (ps.kiCurrent >= stats.attackKiCost || stats.attackKiCost === 0) {
+              moves.push({ type: 'attack', attackerIndex: i, targetIndex: ti });
+            }
+            // Kaioken option — disabled while locked out
+            const kaioken = card.abilities.find(ab => ab.key === 'kaioken');
+            if (kaioken && !locked && ps.kiCurrent >= stats.attackKiCost + 2) {
+              moves.push({ type: 'attack', attackerIndex: i, targetIndex: ti, useKaioken: true });
+            }
           }
         }
 
         // Ultimate (includes activated_one_shot abilities like Body Change, Self-Destruct) —
         // disabled entirely while this hero's class is locked out by the active field.
+        // Summoning sickness still blocks it UNLESS the ability is flagged
+        // ignoresSummoningSickness (e.g. Korin's Senzu Stock).
         const ult = locked ? undefined : card.abilities.find(ab => ab.kind === 'ultimate' || ab.kind === 'activated_one_shot');
-        if (ult && !f.oncePerGameUsed[ult.key] && ps.kiCurrent >= 1) {
+        const ultSicknessOk = !f.summoningSick || !!(ult?.params as any)?.ignoresSummoningSickness;
+        if (ult && ultSicknessOk && !f.oncePerGameUsed[ult.key] && ps.kiCurrent >= 1) {
           const p = ult.params as any;
           if (p.target === 'all_enemy_actives' || p.target === 'all_enemy_fighters_including_bench') {
             moves.push({ type: 'ultimate', fighterIndex: i });

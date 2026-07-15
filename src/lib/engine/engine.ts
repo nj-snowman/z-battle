@@ -412,7 +412,6 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
       const player = s.players[tp];
       const fighter = player.actives[intent.fighterIndex];
       if (!fighter) throw new Error('No fighter in that slot');
-      if (fighter.summoningSick) throw new Error('Fighter is summoning sick');
       if (fighter.hasAttackedThisTurn) throw new Error('Fighter already acted this turn');
       if (fighter.statuses.some(st => st.key === 'stun')) throw new Error('Fighter is stunned');
 
@@ -420,6 +419,9 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
       if (isAbilityLocked(card, s)) throw new Error('Ability is locked by the active field');
       const ultAb = card.abilities.find(ab => ab.kind === 'ultimate' || ab.kind === 'activated_one_shot');
       if (!ultAb) throw new Error('Fighter has no ultimate');
+      if (fighter.summoningSick && !(ultAb.params as any).ignoresSummoningSickness) {
+        throw new Error('Fighter is summoning sick');
+      }
       if (fighter.oncePerGameUsed[ultAb.key]) throw new Error('Ultimate already used');
       if (player.kiCurrent < 1) throw new Error('Not enough Ki');
 
