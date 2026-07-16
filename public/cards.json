@@ -36,9 +36,9 @@
 
   "cards": [
 
-    { "id": "earthling_fighter", "name": "Earthling Fighter", "cardType": "hero", "fighterType": "earthling", "class": "A", "tier": "basic", "kiCost": 1, "hp": 3000, "atk": 2000, "def": 1000, "isUltimateHero": false, "abilities": [], "image": "images/earthling_fighter.png" },
-    { "id": "martial_artist", "name": "Martial Artist", "cardType": "hero", "fighterType": "earthling", "class": "C", "tier": "basic", "kiCost": 1, "hp": 2500, "atk": 2500, "def": 500, "isUltimateHero": false, "abilities": [], "image": "images/martial_artist.png" },
-    { "id": "young_trainee", "name": "Young Trainee", "cardType": "hero", "fighterType": "earthling", "class": "C", "tier": "basic", "kiCost": 1, "hp": 3000, "atk": 1500, "def": 1500, "isUltimateHero": false, "abilities": [], "image": "images/young_trainee.png" },
+    { "id": "yajirobe", "name": "Yajirobe", "cardType": "hero", "fighterType": "earthling", "class": "A", "tier": "basic", "kiCost": 1, "hp": 3000, "atk": 2000, "def": 1000, "isUltimateHero": false, "abilities": [], "image": "images/yajirobe.png" },
+    { "id": "hercule", "name": "Hercule", "cardType": "hero", "fighterType": "earthling", "class": "C", "tier": "basic", "kiCost": 1, "hp": 2500, "atk": 2500, "def": 500, "isUltimateHero": false, "abilities": [], "image": "images/hercule.png" },
+    { "id": "videl", "name": "Videl", "cardType": "hero", "fighterType": "earthling", "class": "C", "tier": "basic", "kiCost": 1, "hp": 3000, "atk": 1500, "def": 1500, "isUltimateHero": false, "abilities": [], "image": "images/videl.png" },
     { "id": "krillin", "name": "Krillin", "cardType": "hero", "fighterType": "earthling", "class": "B", "tier": "mid", "kiCost": 2, "hp": 4000, "atk": 3000, "def": 2000, "isUltimateHero": false, "abilities": [ { "key": "destructo_disc", "kind": "one_shot_on_attack", "name": "Destructo Disc", "oncePerGame": true, "text": "Once per game, this attack deals Pure Damage.", "params": { "ignoreDef": true } } ], "image": "images/krillin.png" },
     { "id": "yamcha", "name": "Yamcha", "cardType": "hero", "fighterType": "earthling", "class": "A", "tier": "mid", "kiCost": 2, "hp": 3500, "atk": 3000, "def": 1000, "isUltimateHero": false, "abilities": [ { "key": "wolf_fang_fist", "kind": "conditional", "text": "+2,000 ATK while your bench is empty.", "params": { "atk": 2000, "condition": "own_bench_empty" } } ], "image": "images/yamcha.png" },
     { "id": "chiaotzu", "name": "Chiaotzu", "cardType": "hero", "fighterType": "earthling", "class": "C", "tier": "mid", "kiCost": 2, "hp": 3000, "atk": 1500, "def": 1500, "isUltimateHero": false, "abilities": [ { "key": "psychic_hold", "kind": "triggered_on_play", "text": "On play, target enemy Active can't attack on its next turn.", "params": { "effect": "stun", "target": "one_enemy_active", "duration": "their_next_turn" } } ], "image": "images/chiaotzu.png" },
@@ -191,7 +191,7 @@
       "name": "The Z-Fighters",
       "type": "earthling",
       "ultimate": "goku",
-      "heroes": ["earthling_fighter", "martial_artist", "young_trainee", "krillin", "yamcha", "chiaotzu", "master_roshi", "tien", "gohan", "goku"],
+      "heroes": ["yajirobe", "hercule", "videl", "krillin", "yamcha", "chiaotzu", "master_roshi", "tien", "gohan", "goku"],
       "items": ["senzu_bean", "power_pole", "weighted_clothing", "scouter", "flying_nimbus", "capsule_corp_kit", "kamehameha", "fusion", "world_tournament_arena", "kame_house"]
     },
     "saiyan": {

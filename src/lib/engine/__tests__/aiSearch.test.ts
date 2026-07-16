@@ -55,11 +55,11 @@ describe('chooseMoveSearch — lethal detection', () => {
       players: {
         p1: {
           ...makeEmptyPlayer('human'),
-          actives: [fighter('earthling_fighter'), null], // atk 2000
+          actives: [fighter('yajirobe'), null], // atk 2000
         },
         p2: {
           ...makeEmptyPlayer('human'),
-          actives: [fighter('martial_artist', { currentHp: 500 }), null], // def 500 -> dmg 1500 >= 500
+          actives: [fighter('hercule', { currentHp: 500 }), null], // def 500 -> dmg 1500 >= 500
         },
       },
     });
@@ -82,7 +82,7 @@ describe('chooseMoveSearch — lethal detection', () => {
         p2: {
           ...makeEmptyPlayer('human'),
           // def 1500 -> base dmg 5500 (not lethal at 7000 hp), kaioken dmg 8500 (lethal)
-          actives: [fighter('young_trainee', { maxHp: 7000, currentHp: 7000 }), null],
+          actives: [fighter('videl', { maxHp: 7000, currentHp: 7000 }), null],
         },
       },
     });
@@ -140,13 +140,13 @@ describe('choosePromotion', () => {
           actives: [null, null],
           // weak fighter first, strong fighter second — Medium's "first available" would pick the weak one
           bench: [
-            fighter('martial_artist', { currentHp: 100 }),
+            fighter('hercule', { currentHp: 100 }),
             fighter('goku'),
           ],
         },
         p2: {
           ...makeEmptyPlayer('human'),
-          actives: [fighter('earthling_fighter'), null],
+          actives: [fighter('yajirobe'), null],
         },
       },
     });
@@ -165,15 +165,15 @@ describe('chooseMoveSearch — safety invariants', () => {
       players: {
         p1: {
           ...makeEmptyPlayer('human'),
-          hand: ['senzu_bean', 'power_pole', 'young_trainee'],
-          actives: [fighter('earthling_fighter', { currentHp: 1500 }), fighter('martial_artist')],
-          bench: [fighter('young_trainee'), null],
+          hand: ['senzu_bean', 'power_pole', 'videl'],
+          actives: [fighter('yajirobe', { currentHp: 1500 }), fighter('hercule')],
+          bench: [fighter('videl'), null],
         },
         p2: {
           ...makeEmptyPlayer('human'),
           hand: ['senzu_bean'],
           actives: [fighter('goku', { currentHp: 4000 }), null],
-          bench: [fighter('young_trainee'), null],
+          bench: [fighter('videl'), null],
         },
       },
     }),
@@ -182,11 +182,11 @@ describe('chooseMoveSearch — safety invariants', () => {
       players: {
         p1: {
           ...makeEmptyPlayer('human'),
-          actives: [fighter('earthling_fighter'), fighter('martial_artist')],
+          actives: [fighter('yajirobe'), fighter('hercule')],
         },
         p2: {
           ...makeEmptyPlayer('human'),
-          actives: [fighter('young_trainee', { currentHp: 2500 }), fighter('goku', { currentHp: 3000 })],
+          actives: [fighter('videl', { currentHp: 2500 }), fighter('goku', { currentHp: 3000 })],
         },
       },
     }),
@@ -219,16 +219,16 @@ describe('chooseMoveSearch — performance budget', () => {
       p1: {
         ...makeEmptyPlayer('human'),
         kiCurrent: 8,
-        hand: ['senzu_bean', 'power_pole', 'earthling_fighter', 'martial_artist', 'young_trainee'],
-        actives: [fighter('goku', { currentHp: 5000 }), fighter('earthling_fighter')],
-        bench: [fighter('martial_artist'), fighter('young_trainee')],
+        hand: ['senzu_bean', 'power_pole', 'yajirobe', 'hercule', 'videl'],
+        actives: [fighter('goku', { currentHp: 5000 }), fighter('yajirobe')],
+        bench: [fighter('hercule'), fighter('videl')],
       },
       p2: {
         ...makeEmptyPlayer('human'),
         kiCurrent: 8,
-        hand: ['senzu_bean', 'power_pole', 'earthling_fighter'],
-        actives: [fighter('broly', { currentHp: 6000 }), fighter('young_trainee')],
-        bench: [fighter('martial_artist'), fighter('earthling_fighter')],
+        hand: ['senzu_bean', 'power_pole', 'yajirobe'],
+        actives: [fighter('broly', { currentHp: 6000 }), fighter('videl')],
+        bench: [fighter('hercule'), fighter('yajirobe')],
       },
     },
   });
