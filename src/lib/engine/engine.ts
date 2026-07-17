@@ -2,7 +2,7 @@ import { GameState, Intent, PlayerId, SlotType, FighterInstance, CardDef } from 
 import { getCard } from './cards';
 import { getEffectiveStats, cardTypesOf, classOf, isAbilityLocked } from './buffs';
 import { resolveKo, applyDamageToFighter, resolveBasicAttack, promoteFromBench, promoteSpecific, boostedAbilityDamage, findFriezaWrathOwner } from './combat';
-import { checkWinLoss } from './utils';
+import { checkWinLoss, checkTie } from './utils';
 import { makeFighterInstance } from './setup';
 
 export { checkWinLoss } from './utils';
@@ -74,6 +74,11 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
 
         // Check Death Saucer follow-up damage at start of next player's turn
         s = processTurnStartEffects(s, nextPlayer);
+        // Catches the 10-turns-each no-KO tie the instant it's reached, rather than
+        // waiting for some later damage-dealing intent to happen to re-check it. Uses
+        // the narrow tie-only check, not the full checkWinLoss — its empty-board rule
+        // would misfire here against a board that's simply not deployed yet.
+        s = checkTie(s);
         break;
       }
 
@@ -461,7 +466,9 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
         if (promoted) {
           const wrathOwner = pending.attackerSide !== undefined ? findFriezaWrathOwner(s, pending.attackerSide) : null;
           const dmg = boostedAbilityDamage(s, wrathOwner, 2000);
-          s = applyDamageToFighter(s, side, 'active', activeIndex, dmg);
+          // Must credit attackerSide so this can KO the freshly-promoted fighter in turn
+          // (otherwise its HP can hit 0 without ever being removed from the board).
+          s = applyDamageToFighter(s, side, 'active', activeIndex, dmg, pending.attackerSide);
         }
       }
       if (daburaStunPending) {
@@ -513,6 +520,7 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
         };
       }
 
+      s = checkWinLoss(s);
       break;
     }
 

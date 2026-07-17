@@ -251,3 +251,30 @@ describe('chooseMoveSearch — performance budget', () => {
     expect(Date.now() - start).toBeLessThan(DIFFICULTY_PRESETS.strongest.timeBudgetMs * 3);
   });
 });
+
+describe('chooseMoveSearch — attacks a non-lethal, evenly-matched target instead of passing', () => {
+  // Regression for a self-play stall: the evaluate() "tempo" term (rewarding unused ready
+  // attackers) used to be weighted heavily enough that any attack dealing less than ~50% of
+  // the target's max HP scored worse than just advancing the phase — so two evenly-matched,
+  // tanky fighters (e.g. a Namekian mirror) would never attack each other, stalling forever.
+  it('attacks rather than advancing the phase when the only attack is a modest, non-lethal hit', () => {
+    const state = makeState({
+      phase: 'battle',
+      players: {
+        p1: {
+          ...makeEmptyPlayer('human'),
+          actives: [fighter('dragon_clan_namekian'), null], // atk 4000, def 2500, hp 6500
+        },
+        p2: {
+          ...makeEmptyPlayer('human'),
+          actives: [fighter('dragon_clan_namekian'), null], // dmg = 4000 - 2500 = 1500, far from lethal
+        },
+      },
+    });
+
+    for (const difficulty of HARD_DIFFICULTIES) {
+      const move = chooseMove(state, 'p1', difficulty);
+      expect(move).toEqual({ type: 'attack', attackerIndex: 0, targetIndex: 0 });
+    }
+  });
+});

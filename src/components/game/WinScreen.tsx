@@ -1,17 +1,18 @@
 'use client';
 
 import React from 'react';
-import type { PlayerId } from '@/lib/engine/types';
+import type { GameOutcome } from '@/lib/engine/types';
 
 interface WinScreenProps {
-  winner: PlayerId;
-  winnerDeck: string;
+  winner: GameOutcome;
+  winnerDeck?: string;
   onPlayAgain: () => void;
 }
 
 export default function WinScreen({ winner, winnerDeck, onPlayAgain }: WinScreenProps) {
+  const isTie = winner === 'tie';
   const playerLabel = winner === 'p1' ? 'PLAYER 1' : 'PLAYER 2';
-  const deckDisplay = winnerDeck.replace('_', ' ').toUpperCase();
+  const deckDisplay = winnerDeck?.replace('_', ' ').toUpperCase();
 
   return (
     <div
@@ -45,7 +46,7 @@ export default function WinScreen({ winner, winnerDeck, onPlayAgain }: WinScreen
             margin: '0 0 8px',
           }}
         >
-          Victory!
+          {isTie ? 'Draw!' : 'Victory!'}
         </p>
         <h1
           style={{
@@ -59,7 +60,7 @@ export default function WinScreen({ winner, winnerDeck, onPlayAgain }: WinScreen
             letterSpacing: 2,
           }}
         >
-          {playerLabel} WINS!
+          {isTie ? "IT'S A TIE!" : `${playerLabel} WINS!`}
         </h1>
         <p
           style={{
@@ -71,7 +72,7 @@ export default function WinScreen({ winner, winnerDeck, onPlayAgain }: WinScreen
             margin: '8px 0 0',
           }}
         >
-          {deckDisplay} DECK
+          {isTie ? 'NO KOs IN 10 TURNS' : `${deckDisplay} DECK`}
         </p>
       </div>
 

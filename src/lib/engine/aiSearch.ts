@@ -25,6 +25,7 @@ function topKByHeuristic(moves: Intent[], state: GameState, mover: PlayerId, k: 
 }
 
 function terminalScore(state: GameState, aiPlayer: PlayerId): number {
+  if (state.winner === 'tie') return 0; // neutral — a draw is neither a win nor a loss
   return state.winner === aiPlayer ? WIN_SCORE : -WIN_SCORE;
 }
 

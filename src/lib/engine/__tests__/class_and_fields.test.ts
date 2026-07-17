@@ -215,7 +215,7 @@ describe("Frieza's Spaceship damage boost", () => {
   it('does not boost item damage', () => {
     let s = makeState({ phase: 'main1', field: 'friezas_spaceship' });
     s.players.p1.hand = ['kamehameha'];
-    s.players.p1.kiCurrent = 2;
+    s.players.p1.kiCurrent = 3;
     s.players.p1.actives[0] = fighter('cell'); // Purple, irrelevant to item damage
     s.players.p2.actives[0] = fighter('dragon_clan_namekian', { maxHp: 20000, currentHp: 20000 });
 

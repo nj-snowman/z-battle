@@ -5,7 +5,7 @@ import type { User } from '@supabase/supabase-js';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/client';
 import type { Match } from '@/lib/supabase/types';
-import type { GameState, Intent, PlayerId } from '@/lib/engine/types';
+import type { GameState, Intent, PlayerId, GameOutcome } from '@/lib/engine/types';
 import { applyIntent } from '@/lib/engine';
 import GameBoard from '@/components/game/GameBoard';
 import DeckScoutModal from '@/components/game/DeckScoutModal';
@@ -14,13 +14,18 @@ interface OnlineGameScreenProps {
   matchId: string;
   myRole: PlayerId;
   user: User;
-  onGameEnd: (winner: PlayerId, winnerDeck: string, myDeck: string) => void;
+  onGameEnd: (winner: GameOutcome, winnerDeck: string | undefined, myDeck: string) => void;
   onLeave: () => void;
 }
 
 // Let GameBoard's finishing-blow sequence (board shake, KO flash, narration, then the
 // VICTORY/DEFEAT reveal) play out before the parent cuts away to WinScreen.
 const WIN_SCREEN_DELAY_MS = 3800;
+
+// A tie has no single winning deck to show.
+function winnerDeckOf(state: GameState, winner: GameOutcome): string | undefined {
+  return winner === 'tie' ? undefined : state.players[winner].deck;
+}
 
 export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onLeave }: OnlineGameScreenProps) {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -37,7 +42,7 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
   const gameEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (gameEndTimerRef.current) clearTimeout(gameEndTimerRef.current); }, []);
 
-  const scheduleGameEnd = useCallback((winner: PlayerId, winnerDeck: string, myDeck: string) => {
+  const scheduleGameEnd = useCallback((winner: GameOutcome, winnerDeck: string | undefined, myDeck: string) => {
     if (gameEndTimerRef.current) clearTimeout(gameEndTimerRef.current);
     gameEndTimerRef.current = setTimeout(() => onGameEnd(winner, winnerDeck, myDeck), WIN_SCREEN_DELAY_MS);
   }, [onGameEnd]);
@@ -61,7 +66,7 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
       bufferedStateRef.current = null;
       setGameState(buffered);
       if (buffered.winner) {
-        scheduleGameEnd(buffered.winner, buffered.players[buffered.winner].deck, buffered.players[myRole].deck);
+        scheduleGameEnd(buffered.winner, winnerDeckOf(buffered, buffered.winner), buffered.players[myRole].deck);
       }
     }
   }, [pendingEnemyAttack, myRole, scheduleGameEnd]);
@@ -85,7 +90,7 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
           }
           setGameState(incoming);
           if (incoming.winner) {
-            scheduleGameEnd(incoming.winner, incoming.players[incoming.winner].deck, incoming.players[myRole].deck);
+            scheduleGameEnd(incoming.winner, winnerDeckOf(incoming, incoming.winner), incoming.players[myRole].deck);
           }
         }
       })
@@ -131,7 +136,9 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
     const newState = applyIntent(gameState, intent);
     setGameState(newState);
 
-    const winnerUuid = newState.winner
+    // A tie has no single winning uuid to persist — the `matches.winner` column stays
+    // null for ties, same as an in-progress match; `status: 'finished'` disambiguates.
+    const winnerUuid = newState.winner && newState.winner !== 'tie'
       ? (newState.winner === 'p1' ? matchData.player1 : matchData.player2)
       : null;
 
@@ -145,7 +152,7 @@ export default function OnlineGameScreen({ matchId, myRole, user, onGameEnd, onL
     }).eq('id', matchId);
 
     if (newState.winner) {
-      scheduleGameEnd(newState.winner, newState.players[newState.winner].deck, newState.players[myRole].deck);
+      scheduleGameEnd(newState.winner, winnerDeckOf(newState, newState.winner), newState.players[myRole].deck);
     }
   }, [gameState, matchData, matchId, myRole, scheduleGameEnd]);
 

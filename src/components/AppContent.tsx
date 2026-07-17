@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { User } from '@supabase/supabase-js';
-import type { GameState, Intent, PlayerId } from '@/lib/engine/types';
+import type { GameState, Intent, PlayerId, GameOutcome } from '@/lib/engine/types';
 import { applyIntent, createInitialState } from '@/lib/engine';
 import { chooseMove, chooseAiPromotion } from '@/lib/engine/ai';
 import type { Difficulty } from '@/lib/engine/aiTypes';
@@ -63,7 +63,7 @@ export default function AppContent({ forceOfflineOnMount = false }: AppContentPr
   const [aiPlayer, setAiPlayer] = useState<PlayerId | null>(null);
   const [aiDifficulty, setAiDifficulty] = useState<Difficulty>('hard');
   const [currentGameMode, setCurrentGameMode] = useState<GameMode>('hotseat');
-  const [winnerState, setWinnerState] = useState<{ winner: PlayerId; deck: string } | null>(null);
+  const [winnerState, setWinnerState] = useState<{ winner: GameOutcome; deck?: string } | null>(null);
   const winScreenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (winScreenTimerRef.current) clearTimeout(winScreenTimerRef.current); }, []);
   const [showCacheModal, setShowCacheModal] = useState(false);
@@ -258,7 +258,9 @@ export default function AppContent({ forceOfflineOnMount = false }: AppContentPr
 
     if (newState.winner) {
       const winner = newState.winner;
-      if (user) {
+      // A tie is neither a win nor a loss — skip the game_results stats row rather
+      // than misrecording it as a loss for p1.
+      if (user && winner !== 'tie') {
         const mode = aiPlayer ? 'ai' : 'hotseat';
         supabase.from('game_results').insert({
           user_id: user.id,
@@ -271,7 +273,7 @@ export default function AppContent({ forceOfflineOnMount = false }: AppContentPr
       // animation now — hold here before cutting to WinScreen.
       if (winScreenTimerRef.current) clearTimeout(winScreenTimerRef.current);
       winScreenTimerRef.current = setTimeout(() => {
-        setWinnerState({ winner, deck: newState.players[winner].deck });
+        setWinnerState({ winner, deck: winner === 'tie' ? undefined : newState.players[winner].deck });
         setScreen('win');
       }, WIN_SCREEN_DELAY_MS);
       return;
@@ -415,7 +417,8 @@ export default function AppContent({ forceOfflineOnMount = false }: AppContentPr
           onGameEnd={(winner, deck, myDeck) => {
             setWinnerState({ winner, deck });
             setActiveMatchId(null);
-            if (user && myOnlineRole) {
+            // A tie is neither a win nor a loss — skip the game_results stats row.
+            if (user && myOnlineRole && winner !== 'tie') {
               supabase.from('game_results').insert({
                 user_id: user.id,
                 game_mode: 'online',

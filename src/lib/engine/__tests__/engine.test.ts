@@ -80,9 +80,10 @@ describe('Ki curve', () => {
   });
 
   it('Ki caps at 8', () => {
-    // Simulate many turns
+    // Simulate many turns — 16 switches is enough for both players to reach turn 8
+    // (kiMax cap) while staying under the 20-turn no-KO tie threshold.
     let s = makeState({ phase: 'end' });
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 16; i++) {
       s = applyIntent(s, { type: 'advance_phase' });
       s = { ...s, phase: 'end' };
     }
@@ -129,6 +130,39 @@ describe('KO scoring', () => {
 
     expect(s.players.p2.koScoredAgainst).toBe(3);
     expect(s.winner).toBe('p1');
+  });
+});
+
+describe('10-turn no-KO tie', () => {
+  it('declares a tie once 20 total turns pass with zero KOs on either side', () => {
+    let s = makeState({ phase: 'end' });
+    for (let i = 0; i < 20 && !s.winner; i++) {
+      s = applyIntent(s, { type: 'advance_phase' });
+      if (!s.winner) s = { ...s, phase: 'end' };
+    }
+    expect(s.winner).toBe('tie');
+  });
+
+  it('does not tie if a KO has already been scored, however many turns pass', () => {
+    let s = makeState({ phase: 'end' });
+    s.players.p1.koScoredAgainst = 1;
+    for (let i = 0; i < 20 && !s.winner; i++) {
+      s = applyIntent(s, { type: 'advance_phase' });
+      if (!s.winner) s = { ...s, phase: 'end' };
+    }
+    expect(s.winner).toBeNull();
+  });
+
+  it('does not falsely trigger the empty-board loss rule for a board that is simply not deployed yet', () => {
+    // Regression: wiring the tie check into every turn switch must not also re-run
+    // checkWinLoss's empty-board rule there — a board with no fighters at a turn
+    // boundary can legitimately mean "haven't played a hero yet," not "lost."
+    let s = makeState({ phase: 'end' });
+    for (let i = 0; i < 10 && !s.winner; i++) {
+      s = applyIntent(s, { type: 'advance_phase' });
+      if (!s.winner) s = { ...s, phase: 'end' };
+    }
+    expect(s.winner).toBeNull();
   });
 });
 
@@ -257,6 +291,24 @@ describe('Saibaman self-destruct', () => {
   });
 });
 
+describe("Frieza's Emperor's Wrath", () => {
+  it('KOs the freshly-promoted fighter when the 2,000 Pure Damage brings them to 0 HP', () => {
+    let s = makeState({ phase: 'battle', firstDamageDone: true });
+
+    s.players.p1.actives[0] = { ...makeFighterInstance('frieza'), summoningSick: false }; // ATK 7000
+    s.players.p1.kiCurrent = 5;
+    s.players.p2.actives[0] = { ...makeFighterInstance('saibaman'), currentHp: 500 }; // dies to Frieza's attack
+    s.players.p2.bench[0] = { ...makeFighterInstance('saibaman'), currentHp: 1500 }; // Wrath's 2,000 dmg should also KO this one
+
+    s = applyIntent(s, { type: 'attack', attackerIndex: 0, targetIndex: 0 });
+    s = applyIntent(s, { type: 'promote_from_bench', benchIndex: 0 });
+
+    // The promoted fighter should also be KO'd, not left sitting at 0 HP
+    expect(s.players.p2.actives[0]).toBeNull();
+    expect(s.players.p2.koScoredAgainst).toBe(2);
+  });
+});
+
 // ---- Test 6: Sacrifice does NOT score a KO ----
 describe('Sacrifice does not score a KO', () => {
   it('Sacrificing a fighter does not increment opponent koScoredAgainst', () => {
@@ -269,6 +321,17 @@ describe('Sacrifice does not score a KO', () => {
     s = applyIntent(s, { type: 'sacrifice', side: 'active', index: 0 });
 
     expect(s.players.p2.koScoredAgainst).toBe(p2KosBefore);
+  });
+
+  it('Sacrificing your last fighter with an empty bench ends the game for the opponent', () => {
+    let s = makeState({ phase: 'main1' });
+    s.players.p1.actives[0] = makeFighterInstance('saibaman');
+    s.players.p1.kiCurrent = 5;
+    s.players.p2.actives[0] = makeFighterInstance('saibaman'); // opponent still has a fighter
+
+    s = applyIntent(s, { type: 'sacrifice', side: 'active', index: 0 });
+
+    expect(s.winner).toBe('p2');
   });
 });
 

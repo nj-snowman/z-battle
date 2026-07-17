@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Image from 'next/image';
-import type { GameState, Intent, PlayerId } from '@/lib/engine/types';
+import type { GameState, Intent, PlayerId, GameOutcome } from '@/lib/engine/types';
 import { legalMoves } from '@/lib/engine';
 import { getCard } from '@/lib/engine/cards';
 import { getEffectiveStats } from '@/lib/engine/buffs';
@@ -286,7 +286,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     turn: PlayerId;
     phase: string;
     friezaWrathSides: Set<string>;
-    winner: PlayerId | null;
+    winner: GameOutcome | null;
   } | null>(null);
 
   // Reset selection when state changes
@@ -2371,19 +2371,21 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
           </div>
           <div style={{
             fontFamily: 'Bangers, sans-serif', fontSize: 52,
-            color: state.winner === perspectiveId ? '#ffb648' : '#ff4d4d',
+            color: state.winner === 'tie' ? '#7de2e0' : state.winner === perspectiveId ? '#ffb648' : '#ff4d4d',
             letterSpacing: 4, textTransform: 'uppercase',
-            textShadow: `0 0 40px ${state.winner === perspectiveId ? 'rgba(255,182,72,0.8)' : 'rgba(255,77,77,0.8)'}`,
+            textShadow: `0 0 40px ${state.winner === 'tie' ? 'rgba(125,226,224,0.8)' : state.winner === perspectiveId ? 'rgba(255,182,72,0.8)' : 'rgba(255,77,77,0.8)'}`,
           }}>
-            {state.winner === perspectiveId ? 'VICTORY' : 'DEFEAT'}
+            {state.winner === 'tie' ? 'DRAW' : state.winner === perspectiveId ? 'VICTORY' : 'DEFEAT'}
           </div>
           <div style={{
             fontFamily: 'Saira Condensed, sans-serif', fontSize: 14,
             color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 2,
           }}>
-            {state.winner === perspectiveId
-              ? 'You won the battle!'
-              : `${state.winner === 'p1' ? 'Player 1' : 'Player 2'} wins`}
+            {state.winner === 'tie'
+              ? 'No KOs in 10 turns'
+              : state.winner === perspectiveId
+                ? 'You won the battle!'
+                : `${state.winner === 'p1' ? 'Player 1' : 'Player 2'} wins`}
           </div>
         </div>
       )}

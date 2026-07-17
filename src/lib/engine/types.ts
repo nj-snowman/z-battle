@@ -1,5 +1,6 @@
 export type Phase = 'draw' | 'main1' | 'battle' | 'main2' | 'end';
 export type PlayerId = 'p1' | 'p2';
+export type GameOutcome = PlayerId | 'tie';
 export type SlotType = 'active' | 'bench';
 export type DrawPile = 'hero' | 'item';
 
@@ -65,7 +66,7 @@ export interface GameState {
   field: string | null; // field card id or null
   discard: DiscardEntry[];
   players: { p1: PlayerState; p2: PlayerState };
-  winner: PlayerId | null;
+  winner: GameOutcome | null;
   log: LogEntry[];
   firstDamageDone: boolean; // the first instance of damage this game (any source) deals half, rounded up to the nearest 500
   pendingPromotions: PendingPromotion[];

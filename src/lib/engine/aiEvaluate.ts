@@ -55,6 +55,7 @@ function handValue(ps: PlayerState): number {
 // roughly an order of magnitude below the one before it, so no combination of the smaller
 // terms can ever outweigh a real KO or near-empty-board threat.
 export function evaluate(state: GameState, forPlayer: PlayerId): number {
+  if (state.winner === 'tie') return 0; // neutral — a draw is neither a win nor a loss
   if (state.winner) return state.winner === forPlayer ? WIN_SCORE : -WIN_SCORE;
 
   const opp: PlayerId = forPlayer === 'p1' ? 'p2' : 'p1';
@@ -79,8 +80,11 @@ export function evaluate(state: GameState, forPlayer: PlayerId): number {
   // ~10,000+, so a weight much above this would let raw stats outweigh an actual KO swing.
   score += (sumEffectivePower(state, forPlayer) - sumEffectivePower(state, opp)) * 0.15;
 
-  // 5. Tempo — fighters that can act right now
-  score += (countReadyAttackers(me) - countReadyAttackers(them)) * 300;
+  // 5. Tempo — fighters that can act right now. Kept small and strictly below the HP-fraction
+  // tier: attacking always spends a ready attacker, so a weight anywhere near tier 3's would let
+  // "staying ready" outscore actually dealing damage — the exact bug that made evenly-matched,
+  // high-HP fighters (e.g. a Namekian mirror) refuse to ever attack, stalling the game forever.
+  score += (countReadyAttackers(me) - countReadyAttackers(them)) * 10;
 
   // 6. Hand/card advantage (heroes weighted 2x items — the scarcer resource)
   score += (handValue(me) - handValue(them)) * 150;
