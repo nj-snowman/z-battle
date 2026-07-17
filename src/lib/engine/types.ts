@@ -70,6 +70,7 @@ export interface GameState {
   log: LogEntry[];
   firstDamageDone: boolean; // the first instance of damage this game (any source) deals half, rounded up to the nearest 500
   pendingPromotions: PendingPromotion[];
+  lastKoTurn?: number; // global turnNumber of the most recent KO (any side) — powers the no-KO-in-10-turns-each tie, checked as a rolling window anywhere in the game, not just the opening turns. Undefined/missing defaults to turn 1 (no KO yet).
 }
 
 // ---- Card definitions (mirror cards.json shape) ----

@@ -1,18 +1,19 @@
 import { GameState, PlayerId } from './types';
 
-// Tie: 10 full turns each (20 total) with no KOs scored by either side — a stalemate,
-// not an unfinished game. Split out from checkWinLoss so it can also be checked right
-// at the turn boundary (see engine.ts's advance_phase handling) without also re-running
-// checkWinLoss's empty-board rule there — a board can legitimately still be undeployed
-// at a turn boundary (nobody's played a hero yet), which isn't true at any of
-// checkWinLoss's other call sites (they only ever fire after real combat has happened).
+// Tie: 10 full turns each (20 total) pass with no KO scored by either side — checked as
+// a rolling window anywhere in the game (not just the opening turns), so a game that
+// stalls out later — after several KOs already happened — also ties instead of running
+// forever. lastKoTurn is stamped by resolveKo() every time any KO happens; it defaults
+// to turn 1 (no KO yet) if a state predates this field. Split out from checkWinLoss so
+// it can also be checked right at the turn boundary (see engine.ts's advance_phase
+// handling) without also re-running checkWinLoss's empty-board rule there — a board can
+// legitimately still be undeployed at a turn boundary (nobody's played a hero yet),
+// which isn't true at any of checkWinLoss's other call sites (they only ever fire after
+// real combat has happened).
 export function checkTie(state: GameState): GameState {
   if (state.winner) return state;
-  if (
-    state.turnNumber > 20 &&
-    state.players.p1.koScoredAgainst === 0 &&
-    state.players.p2.koScoredAgainst === 0
-  ) {
+  const lastKoTurn = state.lastKoTurn ?? 1;
+  if (state.turnNumber - lastKoTurn >= 20) {
     return { ...state, winner: 'tie' };
   }
   return state;

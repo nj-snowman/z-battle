@@ -1,4 +1,4 @@
-const CACHE_NAME = 'z-battle-v12';
+const CACHE_NAME = 'z-battle-v13';
 
 // A stalled fetch (flaky/dead connection) would otherwise hang forever, which is
 // exactly what let the app's own 90%-init-screen hang past its intended timeout —

@@ -97,6 +97,7 @@ export function createInitialState(
     log: [],
     firstDamageDone: false,
     pendingPromotions: [],
+    lastKoTurn: 1,
   };
 }
 

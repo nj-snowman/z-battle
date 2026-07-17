@@ -61,6 +61,10 @@ export function resolveKo(
   koPlayer = { ...s.players[koDSide], koScoredAgainst: s.players[koDSide].koScoredAgainst + 1 };
   s.players = { ...s.players, [koDSide]: koPlayer };
 
+  // Reset the no-KO tie's rolling window — this is the single place every KO (combat,
+  // sacrifice, self-destruct triggers, etc.) passes through.
+  s.lastKoTurn = s.turnNumber;
+
   // The Buu evolve chain is gone once its slot empties via a KO — a future hard-cast starts fresh
   if (card.subtype === 'buu') {
     if (slot === 'active') {

@@ -143,14 +143,33 @@ describe('10-turn no-KO tie', () => {
     expect(s.winner).toBe('tie');
   });
 
-  it('does not tie if a KO has already been scored, however many turns pass', () => {
+  it('does not tie while KOs keep happening periodically, however many total turns pass', () => {
+    // Simulate a KO landing every 15 turns — the rolling window keeps getting refreshed,
+    // so the game should never tie even after far more than 20 total turns.
     let s = makeState({ phase: 'end' });
-    s.players.p1.koScoredAgainst = 1;
+    for (let i = 0; i < 60 && !s.winner; i++) {
+      s = applyIntent(s, { type: 'advance_phase' });
+      if (s.winner) break;
+      if (s.turnNumber % 15 === 0) {
+        s = { ...s, lastKoTurn: s.turnNumber, players: { ...s.players, p1: { ...s.players.p1, koScoredAgainst: s.players.p1.koScoredAgainst + 1 } } };
+      }
+      s = { ...s, phase: 'end' };
+    }
+    expect(s.winner).toBeNull();
+  });
+
+  it('ties later in the game if 20 turns pass with no KO after the last one', () => {
+    // A KO happened at turn 10 (some prior combat scored it), then the game goes quiet —
+    // this is the exact "several KOs already happened, then stalls" case reported from
+    // self-play testing, distinct from the opening-turns case above.
+    let s = makeState({ phase: 'end', turnNumber: 10, lastKoTurn: 10 });
+    s.players.p1.koScoredAgainst = 3;
+    s.players.p2.koScoredAgainst = 2;
     for (let i = 0; i < 20 && !s.winner; i++) {
       s = applyIntent(s, { type: 'advance_phase' });
       if (!s.winner) s = { ...s, phase: 'end' };
     }
-    expect(s.winner).toBeNull();
+    expect(s.winner).toBe('tie');
   });
 
   it('does not falsely trigger the empty-board loss rule for a board that is simply not deployed yet', () => {
@@ -163,6 +182,18 @@ describe('10-turn no-KO tie', () => {
       if (!s.winner) s = { ...s, phase: 'end' };
     }
     expect(s.winner).toBeNull();
+  });
+
+  it('a real combat KO stamps lastKoTurn, resetting the rolling window', () => {
+    let s = makeState({ phase: 'battle', firstDamageDone: true, turnNumber: 10, lastKoTurn: 10 });
+    s.players.p1.actives[0] = { ...makeFighterInstance('saibaman'), summoningSick: false };
+    s.players.p1.kiCurrent = 5;
+    s.players.p2.actives[0] = { ...makeFighterInstance('namekian_child'), currentHp: 500 }; // dies to the attack below
+
+    s = applyIntent(s, { type: 'attack', attackerIndex: 0, targetIndex: 0 });
+
+    expect(s.players.p2.actives[0]).toBeNull(); // confirms the KO actually happened
+    expect(s.lastKoTurn).toBe(10); // turnNumber hasn't advanced past 10 yet this turn
   });
 });
 
