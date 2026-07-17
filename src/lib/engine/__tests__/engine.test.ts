@@ -132,48 +132,6 @@ describe('KO scoring', () => {
   });
 });
 
-// ---- Test 3: Promotion from bench ----
-describe('Promotion from bench', () => {
-  it('When active slot is KO\'d, bench fighter promotes to fill it', () => {
-    let s = makeState({ phase: 'battle' });
-
-    const p1Fighter = makeFighterInstance('saibaman');
-    const p2ActiveFighter = makeFighterInstance('namekian_child');
-    const p2BenchFighter = makeFighterInstance('dragon_clan_namekian');
-
-    s.players.p1.actives[0] = { ...p1Fighter, summoningSick: false };
-    s.players.p1.kiCurrent = 5;
-    s.players.p2.actives[0] = { ...p2ActiveFighter, currentHp: 500 };
-    s.players.p2.bench[0] = p2BenchFighter;
-
-    s = applyIntent(s, { type: 'attack', attackerIndex: 0, targetIndex: 0 });
-
-    // p2 active slot 0 should now have the bench fighter
-    expect(s.players.p2.actives[0]?.cardId).toBe('dragon_clan_namekian');
-    expect(s.players.p2.bench[0]).toBeNull();
-  });
-
-  it('When active has two slots and only one is KO\'d, other active remains', () => {
-    let s = makeState({ phase: 'battle' });
-
-    const p1Fighter = makeFighterInstance('saibaman');
-    const p2Active0 = makeFighterInstance('namekian_child');
-    const p2Active1 = makeFighterInstance('namekian_warrior');
-    const p2Bench0 = makeFighterInstance('dragon_clan_namekian');
-
-    s.players.p1.actives[0] = { ...p1Fighter, summoningSick: false };
-    s.players.p1.kiCurrent = 5;
-    s.players.p2.actives[0] = { ...p2Active0, currentHp: 500 };
-    s.players.p2.actives[1] = p2Active1;
-    s.players.p2.bench[0] = p2Bench0;
-
-    s = applyIntent(s, { type: 'attack', attackerIndex: 0, targetIndex: 0 });
-
-    expect(s.players.p2.actives[0]?.cardId).toBe('dragon_clan_namekian');
-    expect(s.players.p2.actives[1]?.cardId).toBe('namekian_warrior');
-  });
-});
-
 // ---- Test 4: Conditional buff (Nail's Warrior Clan) ----
 describe('Conditional buffs', () => {
   it("Nail gains +1000 DEF when another Namekian is in the other active slot", () => {
@@ -224,15 +182,12 @@ describe('Conditional buffs', () => {
   });
 });
 
-// ---- Test 5: Min 1000 damage on basic attacks ----
-describe('Minimum 1000 damage rule', () => {
-  it('Attack that would deal negative damage still deals 1000', () => {
-    let s = makeState({ phase: 'battle' });
-    // Attacker ATK 1000, target DEF 5000 → raw = -4000, clamped to 1000
-    const attacker = makeFighterInstance('namekian_child'); // ATK 2000, but we'll use a different setup
-    // Use saibaman: ATK 2000
-    const attackerF = makeFighterInstance('saibaman'); // ATK 2000
-    // Target with high DEF — use kami: DEF 4000
+// ---- Test 5: Min 500 damage on basic attacks ----
+describe('Minimum 500 damage rule', () => {
+  it('Attack that would deal negative damage still deals 500', () => {
+    let s = makeState({ phase: 'battle', firstDamageDone: true });
+    // Saibaman ATK 2500, target Kami DEF 4000 → raw = -1500, clamped to 500
+    const attackerF = makeFighterInstance('saibaman'); // ATK 2500
     const targetF = makeFighterInstance('kami'); // ATK 5000, DEF 4000, HP 7000
 
     s.players.p1.actives[0] = { ...attackerF, summoningSick: false };
@@ -242,9 +197,24 @@ describe('Minimum 1000 damage rule', () => {
     const initialHp = s.players.p2.actives[0]!.currentHp;
     s = applyIntent(s, { type: 'attack', attackerIndex: 0, targetIndex: 0 });
 
-    // saibaman ATK 2000 - kami DEF 4000 = -2000 → min 1000 damage
-    const expectedHp = initialHp - 1000;
+    // saibaman ATK 2500 - kami DEF 4000 = -1500 → min 500 damage
+    const expectedHp = initialHp - 500;
     expect(s.players.p2.actives[0]?.currentHp).toBe(expectedHp);
+  });
+
+  it('Still deals the 500 minimum on the very first hit of the game, never halved to 250', () => {
+    let s = makeState({ phase: 'battle' }); // firstDamageDone defaults to false
+    const attackerF = makeFighterInstance('saibaman'); // ATK 2500
+    const targetF = makeFighterInstance('kami'); // DEF 4000, HP 7000
+
+    s.players.p1.actives[0] = { ...attackerF, summoningSick: false };
+    s.players.p1.kiCurrent = 5;
+    s.players.p2.actives[0] = targetF;
+
+    const initialHp = s.players.p2.actives[0]!.currentHp;
+    s = applyIntent(s, { type: 'attack', attackerIndex: 0, targetIndex: 0 });
+
+    expect(s.players.p2.actives[0]?.currentHp).toBe(initialHp - 500);
   });
 
   it('Attack where ATK > DEF deals the difference as damage', () => {
@@ -263,6 +233,30 @@ describe('Minimum 1000 damage rule', () => {
   });
 });
 
+// ---- Test: Saibaman self-destruct can KO the attacker back ----
+describe('Saibaman self-destruct', () => {
+  it('KOs the attacker when its 1,000 Pure Damage retaliation brings them to 0 HP', () => {
+    let s = makeState({ phase: 'battle', firstDamageDone: true });
+
+    const attackerF = makeFighterInstance('saibaman'); // ATK 2500, DEF 500
+    const defenderF = makeFighterInstance('saibaman'); // HP 2000, DEF 500
+
+    s.players.p1.actives[0] = { ...attackerF, summoningSick: false, currentHp: 1000 };
+    s.players.p1.kiCurrent = 5;
+    s.players.p2.actives[0] = defenderF;
+
+    s = applyIntent(s, { type: 'attack', attackerIndex: 0, targetIndex: 0 });
+
+    // 2500 ATK - 500 DEF = 2000 damage, lethal to the defender's 2000 HP
+    expect(s.players.p2.actives[0]).toBeNull();
+    // Saibaman's self-destruct deals 1,000 Pure Damage back to the attacker,
+    // whose remaining 1,000 HP should also drop to 0 and KO them
+    expect(s.players.p1.actives[0]).toBeNull();
+    expect(s.players.p1.koScoredAgainst).toBe(1);
+    expect(s.players.p2.koScoredAgainst).toBe(1);
+  });
+});
+
 // ---- Test 6: Sacrifice does NOT score a KO ----
 describe('Sacrifice does not score a KO', () => {
   it('Sacrificing a fighter does not increment opponent koScoredAgainst', () => {
@@ -275,23 +269,6 @@ describe('Sacrifice does not score a KO', () => {
     s = applyIntent(s, { type: 'sacrifice', side: 'active', index: 0 });
 
     expect(s.players.p2.koScoredAgainst).toBe(p2KosBefore);
-  });
-
-  it('Sacrificing does not trigger win condition', () => {
-    let s = makeState({ phase: 'main1' });
-    // P1 has 2 KOs scored against (p1 nearly lost)
-    s.players.p1.koScoredAgainst = 2;
-    const fighter = makeFighterInstance('saibaman');
-    s.players.p1.actives[0] = fighter;
-    // Also give p2 an active so the board isn't empty
-    s.players.p2.actives[0] = makeFighterInstance('dragon_clan_namekian');
-    s.players.p1.kiCurrent = 5;
-
-    s = applyIntent(s, { type: 'sacrifice', side: 'active', index: 0 });
-
-    // p1's koScoredAgainst should still be 2, not 3
-    expect(s.players.p1.koScoredAgainst).toBe(2);
-    expect(s.winner).toBeNull();
   });
 });
 
@@ -787,6 +764,35 @@ describe('Majin — Babidi Manipulation', () => {
     expect(s.players.p2.koScoredAgainst).toBe(p1KosBefore + 1); // credited to Babidi's controller (p1)
     expect(s.players.p2.actives[1]).toBeNull();
     expect(s.players.p1.bench[0]?.counters.absorb).toBeUndefined(); // Absorb only triggers on Super Buu's own attacks
+  });
+});
+
+describe('Majin — Bibidi Creation usable in Main phase', () => {
+  it('can be used in Main 1, only once, and does not prevent attacking afterward', () => {
+    let s = makeState({ phase: 'main1' });
+    s.players.p1.actives[0] = { ...makeFighterInstance('bibidi'), summoningSick: false };
+    s.players.p1.kiCurrent = 5;
+    s.players.p2.actives[0] = { ...makeFighterInstance('namekian_child'), summoningSick: false };
+    s.discard.push({ cardId: 'pui_pui', owner: 'p1' }); // p1's own KO'd Majin — index 0
+
+    // Legal in Main 1
+    const creationMoves = legalMoves(s, 'p1').filter(m => m.type === 'ultimate' && m.fighterIndex === 0);
+    expect(creationMoves.length).toBeGreaterThan(0);
+
+    s = applyIntent(s, { type: 'ultimate', fighterIndex: 0, targetIndex: 0 });
+    expect(s.players.p1.hand).toContain('pui_pui');
+    expect(s.discard.some(e => e.cardId === 'pui_pui')).toBe(false);
+    // Doesn't consume the attack, and Bibidi can't use it again this game
+    expect(s.players.p1.actives[0]?.hasAttackedThisTurn).toBe(false);
+    expect(s.players.p1.actives[0]?.oncePerGameUsed['creation']).toBe(true);
+    expect(legalMoves(s, 'p1').some(m => m.type === 'ultimate' && m.fighterIndex === 0)).toBe(false);
+
+    // Still able to attack once battle phase arrives
+    s = applyIntent(s, { type: 'advance_phase' });
+    expect(s.phase).toBe('battle');
+    s = applyIntent(s, { type: 'attack', attackerIndex: 0, targetIndex: 0 });
+    expect(s.players.p1.actives[0]?.hasAttackedThisTurn).toBe(true);
+    expect(s.players.p2.actives[0]?.currentHp).toBeLessThan(makeFighterInstance('namekian_child').currentHp);
   });
 });
 

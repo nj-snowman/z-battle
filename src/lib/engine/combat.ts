@@ -92,9 +92,11 @@ export function resolveKo(
       if (ab.kind === 'triggered_on_ko') {
         const p = ab.params as any;
         if (p.damageToKoer && attackerIndex !== undefined) {
-          // Saibaman: deal damage to the attacker
+          // Saibaman: deal damage to the attacker. Credit the KO to koDSide (the
+          // Saibaman's own side) so this damage can KO the attacker in turn —
+          // there's no scoring fighter index since it's a self-destruct effect, not an attack.
           const dmg = boostedAbilityDamage(s, card, p.damageToKoer);
-          s = applyDamageToFighter(s, attackerSide, 'active', attackerIndex, dmg);
+          s = applyDamageToFighter(s, attackerSide, 'active', attackerIndex, dmg, koDSide);
         }
       }
     }
@@ -348,7 +350,8 @@ function applyDamageToFighterCore(
   index: number,
   damage: number,
   attackerSide?: PlayerId,
-  attackerIndex?: number
+  attackerIndex?: number,
+  minDamage?: number // basic-attack damage floor (500) — must hold even after first-hit halving
 ): DamageResult {
   const player = { ...s.players[side] };
   const slots = slot === 'active' ? [...player.actives] : [...player.bench];
@@ -361,6 +364,9 @@ function applyDamageToFighterCore(
   if (!s.firstDamageDone) {
     actualDamage = Math.round(actualDamage * 0.5);
     s = { ...s, firstDamageDone: true };
+  }
+  if (minDamage !== undefined && actualDamage < minDamage) {
+    actualDamage = minDamage;
   }
 
   // Check Barrier Field: prevent up to 2000 damage
@@ -498,8 +504,8 @@ export function resolveBasicAttack(
     s = { ...s, players: { ...s.players, [attackerSide]: { ...pl, kiCurrent: pl.kiCurrent - kiCost } } };
   }
 
-  // Apply damage
-  const result = applyDamageToFighterCore(s, targetSide, 'active', targetIndex, damage, attackerSide, attackerIndex);
+  // Apply damage — basic attacks always deal at least 500, even on the first hit of the game
+  const result = applyDamageToFighterCore(s, targetSide, 'active', targetIndex, damage, attackerSide, attackerIndex, 500);
   s = result.state;
 
   // Dr. Gero's Lab: the attacker's field-based lifesteal is a FIELD effect (not a hero

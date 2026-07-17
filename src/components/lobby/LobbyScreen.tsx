@@ -12,6 +12,8 @@ const DECK_OPTIONS = [
   { id: 'android', name: 'Android', color: '#3aa6ff' },
   { id: 'human', name: 'Earthling', color: '#ffb648' },
   { id: 'frieza_force', name: 'Frieza Force', color: '#b44dff' },
+  { id: 'majin', name: 'Majin', color: '#f03fcc' },
+  { id: 'kai', name: 'Kai', color: '#7de2e0' },
 ];
 
 interface LobbyScreenProps {

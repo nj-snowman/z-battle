@@ -408,28 +408,38 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
     }
 
     case 'ultimate': {
-      if (s.phase !== 'battle') throw new Error('Not in battle phase');
       const player = s.players[tp];
       const fighter = player.actives[intent.fighterIndex];
       if (!fighter) throw new Error('No fighter in that slot');
-      if (fighter.hasAttackedThisTurn) throw new Error('Fighter already acted this turn');
-      if (fighter.statuses.some(st => st.key === 'stun')) throw new Error('Fighter is stunned');
 
       const card = getCard(fighter.cardId);
       if (isAbilityLocked(card, s)) throw new Error('Ability is locked by the active field');
       const ultAb = card.abilities.find(ab => ab.kind === 'ultimate' || ab.kind === 'activated_one_shot');
       if (!ultAb) throw new Error('Fighter has no ultimate');
-      if (fighter.summoningSick && !(ultAb.params as any).ignoresSummoningSickness) {
+      const ultParams = ultAb.params as any;
+
+      // Abilities flagged usableInMainPhase (e.g. Bibidi's Creation) can also be used
+      // outside Battle; everything else remains battle-only.
+      if (s.phase !== 'battle' && !(ultParams.usableInMainPhase && (s.phase === 'main1' || s.phase === 'main2'))) {
+        throw new Error('Not in battle phase');
+      }
+      // doesNotConsumeAttack abilities don't count as the fighter's action for the turn,
+      // so using one neither requires nor blocks a subsequent attack.
+      if (fighter.hasAttackedThisTurn && !ultParams.doesNotConsumeAttack) {
+        throw new Error('Fighter already acted this turn');
+      }
+      if (fighter.statuses.some(st => st.key === 'stun')) throw new Error('Fighter is stunned');
+      if (fighter.summoningSick && !ultParams.ignoresSummoningSickness) {
         throw new Error('Fighter is summoning sick');
       }
       if (fighter.oncePerGameUsed[ultAb.key]) throw new Error('Ultimate already used');
       if (player.kiCurrent < 1) throw new Error('Not enough Ki');
 
-      // Mark as used and attacked, spend 1 Ki
+      // Mark as used (and attacked, unless this ability doesn't consume the attack), spend 1 Ki
       const newActives = [...player.actives] as typeof player.actives;
       newActives[intent.fighterIndex] = {
         ...fighter,
-        hasAttackedThisTurn: true,
+        hasAttackedThisTurn: fighter.hasAttackedThisTurn || !ultParams.doesNotConsumeAttack,
         oncePerGameUsed: { ...fighter.oncePerGameUsed, [ultAb.key]: true },
       };
       s = { ...s, players: { ...s.players, [tp]: { ...player, actives: newActives, kiCurrent: player.kiCurrent - 1 } } };

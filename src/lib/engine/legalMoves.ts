@@ -2,6 +2,19 @@ import { GameState, PlayerId, Intent } from './types';
 import { getCard } from './cards';
 import { getEffectiveStats, isType, cardTypesOf, isAbilityLocked } from './buffs';
 
+// Shared by the Battle-phase ultimate handling and the Main-phase handling for abilities
+// flagged usableInMainPhase (e.g. Bibidi's Creation) — offers reviving each of the
+// player's own KO'd fighters of the given type currently sitting in the discard pile.
+function pushCreationMoves(moves: Intent[], state: GameState, player: PlayerId, fighterIndex: number, type: string) {
+  state.discard.forEach((entry, discardIdx) => {
+    if (entry.owner !== player) return;
+    const c = getCard(entry.cardId);
+    if (c.cardType === 'hero' && cardTypesOf(c).has(type)) {
+      moves.push({ type: 'ultimate', fighterIndex, targetIndex: discardIdx });
+    }
+  });
+}
+
 export function legalMoves(state: GameState, player: PlayerId): Intent[] {
   if (state.winner) return [];
   if (state.turnPlayer !== player) return [];
@@ -200,6 +213,28 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
         if (ps.bench[i]) moves.push({ type: 'sacrifice', side: 'bench', index: i });
       }
 
+      // Abilities explicitly usable during Main phases (e.g. Bibidi's Creation) —
+      // offered here in addition to the standard Battle-phase ultimate handling below.
+      for (let i = 0; i < ps.actives.length; i++) {
+        const f = ps.actives[i];
+        if (!f) continue;
+        const card = getCard(f.cardId);
+        if (isAbilityLocked(card, state)) continue;
+        const ult = card.abilities.find(ab => ab.kind === 'activated_one_shot');
+        if (!ult) continue;
+        const p = ult.params as any;
+        if (!p.usableInMainPhase) continue;
+        if (f.hasAttackedThisTurn && !p.doesNotConsumeAttack) continue;
+        if (f.statuses.some(st => st.key === 'stun')) continue;
+        if (f.summoningSick && !p.ignoresSummoningSickness) continue;
+        if (f.oncePerGameUsed[ult.key]) continue;
+        if (ps.kiCurrent < 1) continue;
+
+        if (p.target === 'creation') {
+          pushCreationMoves(moves, state, player, i, p.type);
+        }
+      }
+
       moves.push({ type: 'advance_phase' });
       break;
     }
@@ -263,13 +298,7 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
               }
             }
           } else if (p.target === 'creation') {
-            state.discard.forEach((entry, discardIdx) => {
-              if (entry.owner !== player) return;
-              const c = getCard(entry.cardId);
-              if (c.cardType === 'hero' && cardTypesOf(c).has(p.type)) {
-                moves.push({ type: 'ultimate', fighterIndex: i, targetIndex: discardIdx });
-              }
-            });
+            pushCreationMoves(moves, state, player, i, p.type);
           }
         }
       }
