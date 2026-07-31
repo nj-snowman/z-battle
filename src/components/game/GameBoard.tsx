@@ -857,7 +857,9 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     itemAnimTimerRef.current = setTimeout(() => {
       setItemAnimPhase('exit');
 
-      if (intent.targetIndex !== undefined) {
+      // targetSide is only set by friendly-target ultimates (Korin's Senzu Stock) — those
+      // support a teammate rather than fire at anyone, so no beam struggle, just the reveal.
+      if (intent.targetIndex !== undefined && intent.targetSide === undefined) {
         // Manipulation (Babidi) forces one enemy Active to attack another — the
         // struggle happens entirely on the opponent's side, not from our caster.
         const isManipulation = intent.secondTargetIndex !== undefined;
@@ -971,7 +973,8 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
 
       const finishOnce = () => { if (!stateRef.current.winner) onDone(); };
 
-      if (intent.targetIndex !== undefined) {
+      // See startUltimateAnim: a friendly-target ultimate (targetSide set) draws no beam.
+      if (intent.targetIndex !== undefined && intent.targetSide === undefined) {
         const isManipulation = intent.secondTargetIndex !== undefined;
         const aEl = isManipulation
           ? board.querySelector(`[data-subslot="active"][data-index="${intent.targetIndex}"][data-opp="false"]`)
@@ -1246,10 +1249,24 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
       return;
     }
 
-    if (selection.mode === 'ultimate_target_select' && isOpponent && side === 'active') {
-      safeIntent({ type: 'ultimate', fighterIndex: selection.fighterIndex, targetIndex: index });
+    if (selection.mode === 'ultimate_target_select') {
+      // Enemy-targeting ultimates hit an opponent Active and carry no targetSide; friendly-targeting
+      // ones (Korin's Senzu Stock) name one of our own slots, active or bench, via targetSide.
+      const wantSide = isOpponent ? undefined : side;
+      const move = (isOpponent && side !== 'active') ? undefined : moves.find(m =>
+        m.type === 'ultimate' &&
+        m.fighterIndex === selection.fighterIndex &&
+        m.targetIndex === index &&
+        (m as Extract<Intent, { type: 'ultimate' }>).targetSide === wantSide
+      );
+      if (move) {
+        safeIntent(move);
+        setSelection({ mode: 'idle' });
+        return;
+      }
+      // Tapped something that isn't a legal target — treat it as a cancel and fall
+      // through to the normal tap handling below.
       setSelection({ mode: 'idle' });
-      return;
     }
 
     if (selection.mode === 'manipulation_select_a' && isOpponent && side === 'active') {
@@ -1596,13 +1613,29 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     ? new Set(oppPlayer.actives.map((f, i) => f ? i : -1).filter((i) => i !== -1))
     : new Set<number>();
 
+  // Enemy-side ultimate targets: opponent Actives, identified by the move carrying no targetSide.
   const ultTargets = selection.mode === 'ultimate_target_select'
     ? new Set(
         moves
-          .filter((m) => m.type === 'ultimate' && m.fighterIndex === selection.fighterIndex && m.targetIndex !== undefined)
+          .filter((m) => m.type === 'ultimate' && m.fighterIndex === selection.fighterIndex &&
+            m.targetIndex !== undefined && m.targetSide === undefined)
           .map((m) => (m as Extract<Intent, { type: 'ultimate' }>).targetIndex!)
       )
     : new Set<number>();
+
+  // Friendly-side ultimate targets (Korin's Senzu Stock) — our own slots, keyed `${side}-${index}`
+  // since these can be on the bench as well as active.
+  const ownUltTargets = selection.mode === 'ultimate_target_select'
+    ? new Set(
+        moves
+          .filter((m) => m.type === 'ultimate' && m.fighterIndex === selection.fighterIndex &&
+            m.targetIndex !== undefined && m.targetSide !== undefined)
+          .map((m) => {
+            const u = m as Extract<Intent, { type: 'ultimate' }>;
+            return `${u.targetSide}-${u.targetIndex}`;
+          })
+      )
+    : new Set<string>();
 
   const manipulationATargets = selection.mode === 'manipulation_select_a'
     ? new Set(
@@ -2539,6 +2572,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
           {myPlayer.actives.map((f, i) => {
             const isAttackerSelected = selection.mode === 'attacker_selected' && selection.attackerIdx === i;
             const isPlayable = validPlaySlots.has(`active-${i}-own`);
+            const isOwnUltTarget = ownUltTargets.has(`active-${i}`);
             return (
               <div key={i} data-slot="fighter" data-subslot="active" data-index={i} data-opp="false" style={{ position: 'relative' }}>
                 {koFlashSlots.has(`${perspectiveId}-active-${i}`) && (
@@ -2550,7 +2584,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
                   isOpponent={false}
                   isCurrentTurnPlayer={isMyTurn}
                   isSelected={isAttackerSelected}
-                  isValidTarget={!isAttackerSelected && isPlayable && !!f}
+                  isValidTarget={!isAttackerSelected && (isOwnUltTarget || (isPlayable && !!f))}
                   isValidPlaySlot={isPlayable && !f}
                   compact={isCompact}
                   canAttack={isMyTurn && state.phase === 'battle' && f !== null && !f.summoningSick && !f.hasAttackedThisTurn && myPlayer.kiCurrent >= getEffectiveStats(f, 'active', i, tp, state).attackKiCost}
@@ -2585,6 +2619,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
                 const isRetreatTarget = retreatBenchTargets.has(i);
                 const isSdBenchTarget = sdBenchTargets.has(i);
                 const isPlayable = validPlaySlots.has(`bench-${i}-own`);
+                const isOwnUltTarget = ownUltTargets.has(`bench-${i}`);
                 return (
                   <div key={i} data-slot="fighter" data-subslot="bench" data-index={i} data-opp="false" style={{ position: 'relative' }}>
                     {koFlashSlots.has(`${perspectiveId}-bench-${i}`) && (
@@ -2595,7 +2630,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
                       isActive={false}
                       isOpponent={false}
                       isCurrentTurnPlayer={isMyTurn}
-                      isValidTarget={isRetreatTarget || isSdBenchTarget || (isPlayable && !!f)}
+                      isValidTarget={isRetreatTarget || isSdBenchTarget || isOwnUltTarget || (isPlayable && !!f)}
                       isValidPlaySlot={isPlayable && !f}
                       compact
                       shaking={shakingSlots.has(`${perspectiveId}-bench-${i}`)}
