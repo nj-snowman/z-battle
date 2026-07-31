@@ -4,16 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/client';
 import type { Friendship, Profile } from '@/lib/supabase/types';
-
-const DECK_OPTIONS = [
-  { id: 'saiyan', name: 'Saiyan', color: '#ff7a18' },
-  { id: 'namekian', name: 'Namekian', color: '#34c759' },
-  { id: 'android', name: 'Android', color: '#3aa6ff' },
-  { id: 'human', name: 'Earthling', color: '#ffb648' },
-  { id: 'frieza_force', name: 'Frieza Force', color: '#b44dff' },
-  { id: 'majin', name: 'Majin', color: '#f03fcc' },
-  { id: 'kai', name: 'Kai', color: '#7de2e0' },
-];
+import { DECK_OPTIONS } from '@/lib/decks';
 
 interface FriendsScreenProps {
   user: User;

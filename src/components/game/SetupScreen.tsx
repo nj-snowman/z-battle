@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import type { PlayerId } from '@/lib/engine/types';
 import type { Difficulty } from '@/lib/engine/aiTypes';
 import { DECKS, getCard } from '@/lib/engine/cards';
+import { DECK_OPTIONS, DECK_IDS } from '@/lib/decks';
 import RulebookModal from './RulebookModal';
 
 export type GameMode = 'hotseat' | 'vs_ai';
@@ -22,18 +23,6 @@ interface SetupScreenProps {
   pendingFriendCount?: number;
   onlineFriendCount?: number;
 }
-
-const DECK_IDS = ['saiyan', 'namekian', 'android', 'human', 'frieza_force', 'majin', 'kai'];
-
-const DECK_OPTIONS = [
-  { id: 'saiyan', name: 'Saiyan', color: '#ff7a18' },
-  { id: 'namekian', name: 'Namekian', color: '#34c759' },
-  { id: 'android', name: 'Android', color: '#3aa6ff' },
-  { id: 'human', name: 'Earthling', color: '#ffb648' },
-  { id: 'frieza_force', name: 'Frieza Force', color: '#b44dff' },
-  { id: 'majin', name: 'Majin', color: '#f03fcc' },
-  { id: 'kai', name: 'Kai', color: '#7de2e0' },
-];
 
 function getDeckImages(deckId: string): string[] {
   const deck = DECKS[deckId];

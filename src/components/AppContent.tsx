@@ -8,6 +8,7 @@ import { chooseMove, chooseAiPromotion } from '@/lib/engine/ai';
 import type { Difficulty } from '@/lib/engine/aiTypes';
 import { supabase } from '@/lib/supabase/client';
 import type { Match } from '@/lib/supabase/types';
+import { DECK_OPTIONS } from '@/lib/decks';
 import AuthScreen from '@/components/auth/AuthScreen';
 import LobbyScreen from '@/components/lobby/LobbyScreen';
 import FriendsScreen from '@/components/friends/FriendsScreen';
@@ -31,14 +32,6 @@ const AI_PLAYER: PlayerId = 'p2';
 // Let the battlefield's finishing-blow sequence (board shake, KO flash, narration,
 // then the VICTORY/DEFEAT reveal in GameBoard) play out before cutting to WinScreen.
 const WIN_SCREEN_DELAY_MS = 3800;
-
-const DECK_OPTIONS = [
-  { id: 'saiyan', name: 'Saiyan', color: '#ff7a18' },
-  { id: 'namekian', name: 'Namekian', color: '#34c759' },
-  { id: 'android', name: 'Android', color: '#3aa6ff' },
-  { id: 'human', name: 'Earthling', color: '#ffb648' },
-  { id: 'frieza_force', name: 'Frieza Force', color: '#b44dff' },
-];
 
 interface AppContentProps {
   // Set when the app bundle itself took >4s to load (see src/app/page.tsx) — a sign
