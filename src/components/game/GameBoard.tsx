@@ -299,6 +299,10 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
   // (the animation's cleanup timer hasn't fired yet when the turn switches).
   useEffect(() => {
     if (state.turnPlayer !== perspectiveId) return;
+    // An enemy card animation still on screen clears the lock itself when it finishes.
+    // Tearing it down here would swallow the opponent's last play of the turn — their
+    // end-turn state can land while the card is still mid-flight.
+    if (pendingEnemyPlay || pendingEnemyUltimate) return;
     cardAnimLock.current = false;
     pendingCardDispatch.current = null;
     if (itemAnimTimerRef.current) { clearTimeout(itemAnimTimerRef.current); itemAnimTimerRef.current = null; }
