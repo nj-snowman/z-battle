@@ -17,8 +17,6 @@ function makeEmptyPlayer(deckId: string): PlayerState {
     bench: [null, null],
     turnNumber: 1,
     friendlySaiyanKoedThisGame: false,
-    activeBuuCounts: [0, 0],
-    benchBuuCounts: [0, 0],
   };
 }
 
@@ -673,42 +671,67 @@ describe('Equipment limit', () => {
 // ---- Majin vignettes (V-M1 – V-M7) ----
 
 describe('Majin — Buu evolve chain', () => {
-  it('V-M1: evolve cost ladder and buuCount progression', () => {
+  it('V-M1: evolve cost ladder down the full chain', () => {
     let s = makeState({ phase: 'main1' });
     s.players.p1.hand = ['evil_buu'];
     s.players.p1.kiCurrent = 1;
     s = applyIntent(s, { type: 'play_hero', cardId: 'evil_buu', slot: 'active', index: 0 });
     expect(s.players.p1.kiCurrent).toBe(0); // hard-cast pays full 1 Ki
-    expect(s.players.p1.activeBuuCounts[0]).toBe(1);
     expect(s.players.p1.actives[0]?.cardId).toBe('evil_buu');
 
     s.players.p1.hand = ['majin_buu_fat'];
     s.players.p1.kiCurrent = 2;
     s = applyIntent(s, { type: 'evolve', cardId: 'majin_buu_fat', slotSide: 'active', slotIndex: 0 });
-    expect(s.players.p1.kiCurrent).toBe(0); // cost = 3 - 1 = 2
-    expect(s.players.p1.activeBuuCounts[0]).toBe(2);
+    expect(s.players.p1.kiCurrent).toBe(0); // cost = 3 - stage 1 = 2
     expect(s.players.p1.actives[0]?.cardId).toBe('majin_buu_fat');
 
     s.players.p1.hand = ['super_buu'];
     s.players.p1.kiCurrent = 3;
     s = applyIntent(s, { type: 'evolve', cardId: 'super_buu', slotSide: 'active', slotIndex: 0 });
-    expect(s.players.p1.kiCurrent).toBe(0); // cost = 5 - 2 = 3
-    expect(s.players.p1.activeBuuCounts[0]).toBe(3);
+    expect(s.players.p1.kiCurrent).toBe(0); // cost = 5 - stage 2 = 3
     expect(s.players.p1.actives[0]?.cardId).toBe('super_buu');
 
     s.players.p1.hand = ['kid_buu'];
     s.players.p1.kiCurrent = 3;
     s = applyIntent(s, { type: 'evolve', cardId: 'kid_buu', slotSide: 'active', slotIndex: 0 });
-    expect(s.players.p1.kiCurrent).toBe(0); // cost = 6 - 3 = 3
-    expect(s.players.p1.activeBuuCounts[0]).toBe(4);
+    expect(s.players.p1.kiCurrent).toBe(0); // cost = 6 - stage 3 = 3
     expect(s.players.p1.actives[0]?.cardId).toBe('kid_buu');
+  });
+
+  it('V-M1b: a hard-cast mid-chain Buu evolves at the same discount as a chained one', () => {
+    let s = makeState({ phase: 'main1' });
+    s.players.p1.hand = ['majin_buu_fat'];
+    s.players.p1.kiCurrent = 3;
+    s = applyIntent(s, { type: 'play_hero', cardId: 'majin_buu_fat', slot: 'active', index: 0 });
+    expect(s.players.p1.kiCurrent).toBe(0); // hard-cast pays full 3 Ki
+
+    s.players.p1.hand = ['super_buu'];
+    s.players.p1.kiCurrent = 3;
+    s = applyIntent(s, { type: 'evolve', cardId: 'super_buu', slotSide: 'active', slotIndex: 0 });
+    expect(s.players.p1.kiCurrent).toBe(0); // cost = 5 - stage 2 = 3, same as if it had come up from Evil Buu
+    expect(s.players.p1.actives[0]?.cardId).toBe('super_buu');
+  });
+
+  it('V-M1c: the discount follows a Buu that retreats to the bench', () => {
+    let s = makeState({ phase: 'main1' });
+    s.players.p1.actives[0] = makeFighterInstance('majin_buu_fat');
+    s.players.p1.actives[1] = makeFighterInstance('yajirobe');
+    s.players.p1.bench[0] = makeFighterInstance('pui_pui');
+    s.players.p1.hand = ['super_buu'];
+    s.players.p1.kiCurrent = 4;
+
+    s = applyIntent(s, { type: 'retreat', activeIndex: 0, benchIndex: 0 }); // 1 Ki
+    expect(s.players.p1.bench[0]?.cardId).toBe('majin_buu_fat');
+
+    s = applyIntent(s, { type: 'evolve', cardId: 'super_buu', slotSide: 'bench', slotIndex: 0 });
+    expect(s.players.p1.kiCurrent).toBe(0); // cost = 5 - stage 2 = 3
+    expect(s.players.p1.bench[0]?.cardId).toBe('super_buu');
   });
 
   it('V-M2: evolve carries damage and gear, and is not a KO', () => {
     let s = makeState({ phase: 'main1' });
     const fatBuu = makeFighterInstance('majin_buu_fat'); // maxHp 6000
     s.players.p1.actives[0] = { ...fatBuu, currentHp: 4000, equipment: ['power_pole'] };
-    s.players.p1.activeBuuCounts = [2, 0];
     s.players.p1.hand = ['super_buu'];
     s.players.p1.kiCurrent = 10;
     const p2KosBefore = s.players.p2.koScoredAgainst;
@@ -725,7 +748,6 @@ describe('Majin — Buu evolve chain', () => {
     let s = makeState({ phase: 'main1' });
     const superBuu = makeFighterInstance('super_buu');
     s.players.p1.actives[0] = { ...superBuu, counters: { absorb: 2 } };
-    s.players.p1.activeBuuCounts = [3, 0];
     s.players.p1.hand = ['kid_buu'];
     s.players.p1.kiCurrent = 10;
 

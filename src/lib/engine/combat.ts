@@ -65,20 +65,6 @@ export function resolveKo(
   // sacrifice, self-destruct triggers, etc.) passes through.
   s.lastKoTurn = s.turnNumber;
 
-  // The Buu evolve chain is gone once its slot empties via a KO — a future hard-cast starts fresh
-  if (card.subtype === 'buu') {
-    if (slot === 'active') {
-      const counts = [...koPlayer.activeBuuCounts] as [number, number];
-      counts[index] = 0;
-      koPlayer = { ...koPlayer, activeBuuCounts: counts };
-    } else {
-      const counts = [...koPlayer.benchBuuCounts] as [number, number];
-      counts[index] = 0;
-      koPlayer = { ...koPlayer, benchBuuCounts: counts };
-    }
-    s.players = { ...s.players, [koDSide]: koPlayer };
-  }
-
   // Track Nappa Rampage: if a Saiyan was KO'd, mark for the player who LOST the Saiyan
   if (cardTypesOf(card).has('saiyan')) {
     const updatedKoPlayer = { ...s.players[koDSide], friendlySaiyanKoedThisGame: true };

@@ -35,8 +35,6 @@ export interface PlayerState {
   bench: (FighterInstance | null)[];
   turnNumber: number; // this player's own turn count (for Ki curve)
   friendlySaiyanKoedThisGame: boolean; // for Nappa Rampage
-  activeBuuCounts: [number, number]; // Buu evolve-chain depth per active slot; resets to 0 when the slot empties via KO
-  benchBuuCounts: [number, number]; // same, for bench slots
 }
 
 export interface DiscardEntry {

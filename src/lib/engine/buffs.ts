@@ -17,6 +17,14 @@ export function classOf(card: CardDef): string | undefined {
   return card.class;
 }
 
+// Evolving a Buu is discounted by the stage already standing in the slot, so the Ki you
+// spend is only what the new form costs beyond what's already there. Derived from the
+// occupying card rather than a per-slot counter so a hard-cast mid-chain Buu (or one that
+// retreated to the bench) is discounted the same as one that climbed the whole ladder.
+export function buuEvolveCost(next: CardDef, current: CardDef): number {
+  return Math.max(0, next.kiCost - (current.buuStage ?? 0));
+}
+
 // True when a `field_lockout` field is in play and this card's class isn't the
 // protected one — its own printed abilities (passives, triggers, activated,
 // ultimates) go dark for as long as the lock holds. Equipment, items, and field

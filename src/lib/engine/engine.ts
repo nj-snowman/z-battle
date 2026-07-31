@@ -1,6 +1,6 @@
 import { GameState, Intent, PlayerId, SlotType, FighterInstance, CardDef } from './types';
 import { getCard } from './cards';
-import { getEffectiveStats, cardTypesOf, classOf, isAbilityLocked } from './buffs';
+import { getEffectiveStats, cardTypesOf, classOf, isAbilityLocked, buuEvolveCost } from './buffs';
 import { resolveKo, applyDamageToFighter, resolveBasicAttack, promoteFromBench, promoteSpecific, boostedAbilityDamage, findFriezaWrathOwner } from './combat';
 import { checkWinLoss, checkTie } from './utils';
 import { makeFighterInstance } from './setup';
@@ -130,20 +130,10 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
         const newActives = [...player.actives] as typeof player.actives;
         newActives[intent.index] = fighter;
         player.actives = newActives;
-        if (card.subtype === 'buu') {
-          const counts = [...player.activeBuuCounts] as [number, number];
-          counts[intent.index] = 1;
-          player.activeBuuCounts = counts;
-        }
       } else {
         const newBench = [...player.bench] as typeof player.bench;
         newBench[intent.index] = fighter;
         player.bench = newBench;
-        if (card.subtype === 'buu') {
-          const counts = [...player.benchBuuCounts] as [number, number];
-          counts[intent.index] = 1;
-          player.benchBuuCounts = counts;
-        }
       }
 
       s = { ...s, players: { ...s.players, [tp]: player } };
@@ -187,9 +177,7 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
       if (prevCard.subtype !== 'buu') throw new Error('Slot does not hold a Buu');
       if ((card.buuStage ?? 0) <= (prevCard.buuStage ?? 0)) throw new Error('Must evolve to a higher Buu stage');
 
-      const buuCounts = intent.slotSide === 'active' ? player.activeBuuCounts : player.benchBuuCounts;
-      const slotBuuCount = buuCounts[intent.slotIndex];
-      const cost = Math.max(0, card.kiCost - slotBuuCount);
+      const cost = buuEvolveCost(card, prevCard);
       if (player.kiCurrent < cost) throw new Error('Not enough Ki');
 
       player.hand = player.hand.filter((_, i) => i !== handIdx);
@@ -246,16 +234,10 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
         const newActives = [...player.actives] as typeof player.actives;
         newActives[intent.slotIndex] = newFighter;
         player.actives = newActives;
-        const counts = [...player.activeBuuCounts] as [number, number];
-        counts[intent.slotIndex] = slotBuuCount + 1;
-        player.activeBuuCounts = counts;
       } else {
         const newBench = [...player.bench] as typeof player.bench;
         newBench[intent.slotIndex] = newFighter;
         player.bench = newBench;
-        const counts = [...player.benchBuuCounts] as [number, number];
-        counts[intent.slotIndex] = slotBuuCount + 1;
-        player.benchBuuCounts = counts;
       }
 
       // Not a KO — no score, no on-KO triggers. The old card just goes to discard.

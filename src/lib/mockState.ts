@@ -84,8 +84,6 @@ const p1: PlayerState = {
   bench: [bardock, null],
   turnNumber: 5,
   friendlySaiyanKoedThisGame: false,
-  activeBuuCounts: [0, 0],
-  benchBuuCounts: [0, 0],
 };
 
 const p2: PlayerState = {
@@ -100,8 +98,6 @@ const p2: PlayerState = {
   bench: [dende, null],
   turnNumber: 4,
   friendlySaiyanKoedThisGame: false,
-  activeBuuCounts: [0, 0],
-  benchBuuCounts: [0, 0],
 };
 
 export const mockState: GameState = {

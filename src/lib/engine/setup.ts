@@ -69,8 +69,6 @@ export function createInitialState(
     bench: [null, null],
     turnNumber: 0,
     friendlySaiyanKoedThisGame: false,
-    activeBuuCounts: [0, 0],
-    benchBuuCounts: [0, 0],
   });
 
   const p1State = makePlayerState(p1DeckId, p1Hand, p1FinalPiles, p1UserId);

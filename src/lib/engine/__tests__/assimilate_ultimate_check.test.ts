@@ -16,7 +16,6 @@ function mkPlayer(actives: (FighterInstance | null)[]): PlayerState {
     hand: [], piles: { hero: [], item: [] },
     actives, bench: [null, null],
     turnNumber: 5, friendlySaiyanKoedThisGame: false,
-    activeBuuCounts: [0, 0], benchBuuCounts: [0, 0],
   };
 }
 

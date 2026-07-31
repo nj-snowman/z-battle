@@ -1,6 +1,6 @@
 import { GameState, PlayerId, Intent } from './types';
 import { getCard } from './cards';
-import { getEffectiveStats, isType, cardTypesOf, isAbilityLocked } from './buffs';
+import { getEffectiveStats, isType, cardTypesOf, isAbilityLocked, buuEvolveCost } from './buffs';
 
 // Shared by the Battle-phase ultimate handling and the Main-phase handling for abilities
 // flagged usableInMainPhase (e.g. Bibidi's Creation) — offers reviving each of the
@@ -76,14 +76,13 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
         if (card.cardType !== 'hero' || card.subtype !== 'buu') continue;
         for (const slotSide of ['active', 'bench'] as const) {
           const slots = slotSide === 'active' ? ps.actives : ps.bench;
-          const buuCounts = slotSide === 'active' ? ps.activeBuuCounts : ps.benchBuuCounts;
           for (let i = 0; i < slots.length; i++) {
             const cur = slots[i];
             if (!cur) continue;
             const curCard = getCard(cur.cardId);
             if (curCard.subtype !== 'buu') continue;
             if ((card.buuStage ?? 0) <= (curCard.buuStage ?? 0)) continue;
-            const cost = Math.max(0, card.kiCost - buuCounts[i]);
+            const cost = buuEvolveCost(card, curCard);
             if (ps.kiCurrent >= cost) {
               moves.push({ type: 'evolve', cardId, slotSide, slotIndex: i });
             }
