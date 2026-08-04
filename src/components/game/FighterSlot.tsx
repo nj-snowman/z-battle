@@ -28,6 +28,8 @@ const TYPE_GRADIENTS: Record<string, string> = {
   earthling: 'linear-gradient(135deg, #1a1505, #3d3510)',
   frieza_force: 'linear-gradient(135deg, #150d20, #2d1a45)',
   majin: 'linear-gradient(135deg, #1a0820, #3d1040)',
+  kai: 'linear-gradient(135deg, #06201f, #0e4442)',
+  rascal: 'linear-gradient(135deg, #221a03, #4a3a08)',
 };
 
 const TYPE_ACCENT: Record<string, string> = {
@@ -37,6 +39,8 @@ const TYPE_ACCENT: Record<string, string> = {
   earthling: '#ffb648',
   frieza_force: '#b44dff',
   majin: '#f03fcc',
+  kai: '#7de2e0',
+  rascal: '#ffd447',
 };
 
 const TYPE_LABEL: Record<string, string> = {
@@ -46,6 +50,8 @@ const TYPE_LABEL: Record<string, string> = {
   earthling: 'EARTHLING',
   frieza_force: 'FRIEZA FORCE',
   majin: 'MAJIN',
+  kai: 'KAI',
+  rascal: 'RASCAL',
 };
 
 function formatStat(n: number): string {
@@ -141,6 +147,12 @@ export default function FighterSlot({
   const hpPct = fighter.maxHp > 0 ? fighter.currentHp / fighter.maxHp : 0;
   const isLowHp = hpPct <= 0.5;
   const isStunned = fighter.statuses.some((s) => s.key === 'stun');
+  // Gotenks's trap, riding on this fighter until it next makes a basic attack
+  const isGhosted = (fighter.counters['ghost'] ?? 0) > 0;
+  // Prank Kit and friends — any temporary signed stat modifier currently applied
+  const isDebuffed = fighter.statuses.some(
+    (s) => (s.key === 'atk_debuff' || s.key === 'def_debuff') && (s.value ?? 0) < 0
+  );
 
   const w = isActive ? (compact ? 110 : 140) : compact ? 60 : 90;
   const h = isActive ? (compact ? 154 : 196) : compact ? 84 : 126;
@@ -414,6 +426,25 @@ export default function FighterSlot({
               textTransform: 'uppercase', letterSpacing: 0.3,
             }}>STUN</span>
           )}
+          {isDebuffed && (
+            <span style={{
+              fontFamily: 'Saira Condensed, sans-serif', fontSize: 7, fontWeight: 700,
+              color: '#fff', background: '#8257e6',
+              borderRadius: 2, padding: '1px 3px',
+              textTransform: 'uppercase', letterSpacing: 0.3,
+            }}>PRANKED</span>
+          )}
+          {isGhosted && (
+            <span
+              title="A ghost is attached — its next basic attack rebounds on its own side"
+              style={{
+                fontFamily: 'Saira Condensed, sans-serif', fontSize: 7, fontWeight: 700,
+                color: '#0d0f14', background: '#e8e4ff',
+                borderRadius: 2, padding: '1px 3px',
+                textTransform: 'uppercase', letterSpacing: 0.3,
+                boxShadow: '0 0 8px rgba(232,228,255,0.9)',
+              }}>👻 GHOST</span>
+          )}
         </div>
 
         {/* Equipment dots */}
@@ -482,6 +513,10 @@ export default function FighterSlot({
             } else if (ab.kind === 'triggered_on_ko' && p.onlyOnOwnKo && p.atkPerKo) {
               const count = fighter.counters[ab.key] ?? 0;
               if (count > 0) atkTotal += count * p.atkPerKo;
+            } else if (ab.kind === 'death_replacement' && p.atkBonus) {
+              // Kid Gohan's Hidden Power, after it has saved him once
+              const count = fighter.counters[ab.key] ?? 0;
+              if (count > 0) atkTotal += count * p.atkBonus;
             }
           }
           for (const itemId of fighter.equipment) {

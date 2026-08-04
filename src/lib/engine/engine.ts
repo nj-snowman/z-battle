@@ -1,7 +1,7 @@
 import { GameState, Intent, PlayerId, SlotType, FighterInstance, CardDef } from './types';
 import { getCard } from './cards';
-import { getEffectiveStats, cardTypesOf, classOf, isAbilityLocked, buuEvolveCost } from './buffs';
-import { resolveKo, applyDamageToFighter, resolveBasicAttack, promoteFromBench, promoteSpecific, boostedAbilityDamage, findFriezaWrathOwner } from './combat';
+import { getEffectiveStats, cardTypesOf, classOf, isAbilityLocked, buuEvolveCost, heroPlayCost } from './buffs';
+import { resolveKo, applyDamageToFighter, resolveBasicAttack, promoteFromBench, promoteSpecific, boostedAbilityDamage, findFriezaWrathOwner, GHOST_COUNTER } from './combat';
 import { checkWinLoss, checkTie } from './utils';
 import { makeFighterInstance } from './setup';
 
@@ -92,7 +92,9 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
       const card = getCard(intent.cardId);
       if (card.cardType !== 'hero') throw new Error('Not a hero card');
       const player = { ...s.players[tp] };
-      if (player.kiCurrent < card.kiCost) throw new Error('Not enough Ki');
+      // Board-state cost reduction (Gotenks's Fusion) — normally just the printed cost.
+      const playCost = heroPlayCost(card, tp, s);
+      if (player.kiCurrent < playCost) throw new Error('Not enough Ki');
       const handIdx = player.hand.indexOf(intent.cardId);
       if (handIdx === -1) throw new Error('Card not in hand');
 
@@ -103,7 +105,7 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
       }
 
       player.hand = player.hand.filter((_, i) => i !== handIdx);
-      player.kiCurrent -= card.kiCost;
+      player.kiCurrent -= playCost;
 
       let fighter = makeFighterInstance(intent.cardId);
 
@@ -260,7 +262,7 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
 
       // Process item abilities
       for (const ab of card.abilities) {
-        s = applyItemAbility(s, tp, opponent, card.id, ab, intent.targetSide, intent.targetIndex, intent.pileChoice, intent.drawChoices, intent.enemyTargetIndex, intent.promotionIndex, intent.discardIndex);
+        s = applyItemAbility(s, tp, opponent, card.id, ab, intent.targetSide, intent.targetIndex, intent.pileChoice, intent.drawChoices, intent.enemyTargetIndex, intent.promotionIndex, intent.discardIndex, intent.tutorCardId);
       }
 
       // Consumables go to discard (unless already discarded by the ability)
@@ -420,16 +422,18 @@ export function applyIntent(state: GameState, intent: Intent): GameState {
         throw new Error('Fighter is summoning sick');
       }
       if (fighter.oncePerGameUsed[ultAb.key]) throw new Error('Ultimate already used');
-      if (player.kiCurrent < 1) throw new Error('Not enough Ki');
+      // Abilities are 1 Ki unless the card prints otherwise (Uub's Reincarnation is free).
+      const ultKiCost: number = ultParams.kiCost ?? 1;
+      if (player.kiCurrent < ultKiCost) throw new Error('Not enough Ki');
 
-      // Mark as used (and attacked, unless this ability doesn't consume the attack), spend 1 Ki
+      // Mark as used (and attacked, unless this ability doesn't consume the attack), spend the Ki
       const newActives = [...player.actives] as typeof player.actives;
       newActives[intent.fighterIndex] = {
         ...fighter,
         hasAttackedThisTurn: fighter.hasAttackedThisTurn || !ultParams.doesNotConsumeAttack,
         oncePerGameUsed: { ...fighter.oncePerGameUsed, [ultAb.key]: true },
       };
-      s = { ...s, players: { ...s.players, [tp]: { ...player, actives: newActives, kiCurrent: player.kiCurrent - 1 } } };
+      s = { ...s, players: { ...s.players, [tp]: { ...player, actives: newActives, kiCurrent: player.kiCurrent - ultKiCost } } };
 
       // Apply ultimate effect
       s = applyUltimate(s, tp, opponent, ultAb, intent.fighterIndex, intent.targetIndex, intent.secondTargetIndex, intent.targetSide);
@@ -570,6 +574,33 @@ function applyUltimate(s: GameState, tp: PlayerId, opp: PlayerId, ab: any, caste
           [tp]: side === 'active' ? { ...player, actives: newSlots as typeof player.actives } : { ...player, bench: newSlots as typeof player.bench },
         },
       };
+      break;
+    }
+    case 'reincarnation': {
+      // Uub heals himself to full. The free-action part (doesNotConsumeAttack) and the
+      // zero Ki cost are both handled generically by the 'ultimate' intent above, so all
+      // that's left here is the heal.
+      const player = s.players[tp];
+      const self = player.actives[casterIndex];
+      if (!self) break;
+      const healed = [...player.actives] as typeof player.actives;
+      healed[casterIndex] = { ...self, currentHp: self.maxHp };
+      s = { ...s, players: { ...s.players, [tp]: { ...player, actives: healed } } };
+      break;
+    }
+    case 'super_ghost_kamikaze_attack': {
+      // Attach a ghost to one enemy Active. Nothing resolves now — the trap sits on that
+      // specific fighter until it makes a basic attack (see resolveGhostedAttack).
+      if (targetIndex === undefined) throw new Error('Ultimate requires target');
+      const oppPlayer = s.players[opp];
+      const victim = oppPlayer.actives[targetIndex];
+      if (!victim) throw new Error('No target');
+      const oppActives = [...oppPlayer.actives] as typeof oppPlayer.actives;
+      oppActives[targetIndex] = {
+        ...victim,
+        counters: { ...victim.counters, [GHOST_COUNTER]: 1 },
+      };
+      s = { ...s, players: { ...s.players, [opp]: { ...oppPlayer, actives: oppActives } } };
       break;
     }
     case 'special_beam_cannon': {
@@ -718,7 +749,8 @@ function applyItemAbility(
   drawChoices?: Array<'hero' | 'item'>,
   enemyTargetIndex?: number,
   promotionIndex?: number,
-  discardIndex?: number
+  discardIndex?: number,
+  tutorCardId?: string
 ): GameState {
   const p = ab.params as any;
   switch (ab.kind) {
@@ -821,6 +853,41 @@ function applyItemAbility(
       };
       oppPlayer.actives = oppActives;
       s = { ...s, players: { ...s.players, [opp]: oppPlayer } };
+      break;
+    }
+    case 'debuff': {
+      // Prank Kit: a signed stat modifier parked on an enemy Active as a status. It uses
+      // 'end_of_their_next_turn' rather than the stun-style 'their_next_turn' so it lives
+      // THROUGH the victim's turn instead of being swept at the start of it.
+      if (targetIndex === undefined) break;
+      const oppPlayer = { ...s.players[opp] };
+      const oppActives = [...oppPlayer.actives] as typeof oppPlayer.actives;
+      const target = oppActives[targetIndex];
+      if (!target) break;
+      const statuses = [...target.statuses];
+      if (p.atk) statuses.push({ key: 'atk_debuff', until: p.until ?? 'end_of_their_next_turn', value: p.atk });
+      if (p.def) statuses.push({ key: 'def_debuff', until: p.until ?? 'end_of_their_next_turn', value: p.def });
+      oppActives[targetIndex] = { ...target, statuses };
+      oppPlayer.actives = oppActives;
+      s = { ...s, players: { ...s.players, [opp]: oppPlayer } };
+      break;
+    }
+    case 'tutor': {
+      // Fusion Dance Practice: pull a named hero out of your own pile into hand. The pile
+      // is not reshuffled afterwards — its order is hidden from both players, so a shuffle
+      // would change nothing observable while making applyIntent non-deterministic (which
+      // the search AI replays through).
+      const player = { ...s.players[tp] };
+      const from: 'hero' | 'item' = p.from ?? 'hero';
+      const allowed: string[] = p.cardIds ?? [];
+      const pile = player.piles[from];
+      const pickIdx = tutorCardId !== undefined && allowed.includes(tutorCardId)
+        ? pile.indexOf(tutorCardId)
+        : pile.findIndex(id => allowed.includes(id));
+      if (pickIdx === -1) break; // none of the named cards left in the pile — item fizzles
+      player.piles = { ...player.piles, [from]: pile.filter((_, i) => i !== pickIdx) };
+      player.hand = [...player.hand, pile[pickIdx]];
+      s = { ...s, players: { ...s.players, [tp]: player } };
       break;
     }
     case 'delayed_damage': {
@@ -1147,12 +1214,16 @@ function processEndOfTurn(s: GameState): GameState {
     newDiscard.push({ cardId: discarded, owner: tp });
   }
 
-  // Clear stun statuses and retreat block after the stunned player has had their turn to act
+  // Clear stun statuses and retreat block after the stunned player has had their turn to
+  // act. 'end_of_their_next_turn' effects (Prank Kit) expire here too — this IS the end of
+  // the affected player's turn, which is the only point they're allowed to lapse.
+  const expired = (st: { until: string }) =>
+    st.until !== 'their_next_turn' && st.until !== 'end_of_their_next_turn';
   player.actives = player.actives.map(f =>
-    f ? { ...f, statuses: f.statuses.filter(st => st.until !== 'their_next_turn'), cannotRetreatThisTurn: undefined } : null
+    f ? { ...f, statuses: f.statuses.filter(expired), cannotRetreatThisTurn: undefined } : null
   ) as typeof player.actives;
   player.bench = player.bench.map(f =>
-    f ? { ...f, statuses: f.statuses.filter(st => st.until !== 'their_next_turn') } : null
+    f ? { ...f, statuses: f.statuses.filter(expired) } : null
   ) as typeof player.bench;
 
   s = { ...s, discard: newDiscard, players: { ...s.players, [tp]: player } };

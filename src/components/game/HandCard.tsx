@@ -7,6 +7,13 @@ import { getCard } from '@/lib/engine/cards';
 interface HandCardProps {
   cardId: string;
   isSelected?: boolean;
+  /**
+   * What this card costs right now, when that's less than the cost printed on its art
+   * (Gotenks's Fusion). Omitted whenever the printed cost is the real cost. The art is a
+   * flat image, so without this badge a discount is invisible until you notice the card
+   * has gone playable.
+   */
+  discountedCost?: number;
 }
 
 const TYPE_ACCENT: Record<string, string> = {
@@ -15,6 +22,9 @@ const TYPE_ACCENT: Record<string, string> = {
   android: '#3aa6ff',
   earthling: '#ffb648',
   frieza_force: '#b44dff',
+  majin: '#f03fcc',
+  kai: '#7de2e0',
+  rascal: '#ffd447',
 };
 
 function getArtBg(cardType: string, fighterType?: string): string {
@@ -29,7 +39,7 @@ function getFallbackColor(cardType: string, fighterType?: string): string {
   return 'rgba(76,217,100,0.5)';
 }
 
-export default function HandCard({ cardId, isSelected = false }: HandCardProps) {
+export default function HandCard({ cardId, isSelected = false, discountedCost }: HandCardProps) {
   let card;
   try {
     card = getCard(cardId);
@@ -86,6 +96,33 @@ export default function HandCard({ cardId, isSelected = false }: HandCardProps) 
             userSelect: 'none',
           }}>
             {name.charAt(0)}
+          </span>
+        </div>
+      )}
+
+      {/* Live cost badge — only rendered when an ability is undercutting the printed cost */}
+      {discountedCost !== undefined && (
+        <div style={{
+          position: 'absolute',
+          top: 3,
+          right: 3,
+          minWidth: 18,
+          height: 18,
+          borderRadius: 9,
+          background: 'linear-gradient(135deg, var(--ki), var(--ki2))',
+          border: '1.5px solid rgba(0,0,0,0.55)',
+          boxShadow: '0 0 10px rgba(255,122,24,0.85)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: '0 3px',
+        }}>
+          <span style={{
+            fontFamily: 'Bangers, sans-serif',
+            fontSize: 12,
+            lineHeight: 1,
+            color: '#0d0f14',
+            letterSpacing: 0.5,
+          }}>
+            {discountedCost}
           </span>
         </div>
       )}

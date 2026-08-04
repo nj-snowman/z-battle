@@ -5,7 +5,7 @@ import Image from 'next/image';
 import type { GameState, Intent, PlayerId, GameOutcome } from '@/lib/engine/types';
 import { legalMoves } from '@/lib/engine';
 import { getCard } from '@/lib/engine/cards';
-import { getEffectiveStats } from '@/lib/engine/buffs';
+import { getEffectiveStats, heroPlayCost } from '@/lib/engine/buffs';
 import FighterSlot from './FighterSlot';
 import KiDisplay from './KiDisplay';
 import KoScore from './KoScore';
@@ -19,6 +19,42 @@ import DragonBallKi from './DragonBallKi';
 // Colour-only class identity (heroes only) — used purely as an interaction glow while a
 // hand card is being picked up/dragged; there's no other in-app UI for the class system.
 const CLASS_COLORS: Record<string, string> = { A: '#2eb85f', B: '#8257e6', C: '#f5c518' };
+
+// Consumables whose only target is a single enemy Active — dropped or tapped straight onto
+// an opposing fighter. Kept in one place so a new one (Prank Kit) lights up every path.
+const ENEMY_TARGET_ITEM_KINDS = ['direct_damage', 'delayed_damage', 'stun', 'debuff'];
+
+// Total time the ghost overlay is on screen before the intent resolves. Budgeted as
+// 1,280ms of drift + the trailing ghosts' 300ms stagger + the attach flourish, so nothing
+// gets cut off mid-animation when the overlay tears down.
+const GHOST_FLIGHT_MS = 1800;
+const GHOST_TRAVEL_MS = 1280;
+
+// True when this hero's ultimate plants an attached trap rather than dealing damage
+// (Gotenks). Read off the ability data rather than the card id so a second trap card
+// would pick up the same treatment for free.
+function ultimateAttachesTrap(cardId: string): boolean {
+  try {
+    return getCard(cardId).abilities.some(
+      ab => (ab.kind === 'ultimate' || ab.kind === 'activated_one_shot') &&
+        (ab.params as Record<string, unknown>)['attachTrap'] !== undefined
+    );
+  } catch {
+    return false;
+  }
+}
+
+// True for a hero whose on-play trigger shows us the opponent's hand (Emperor Pilaf's
+// Scheming). Purely informational, so it lives in the UI rather than in game state.
+function revealsOpponentHandOnPlay(cardId: string): boolean {
+  try {
+    return getCard(cardId).abilities.some(
+      ab => ab.kind === 'triggered_on_play' && (ab.params as Record<string, unknown>)['revealOpponentHand'] === true
+    );
+  } catch {
+    return false;
+  }
+}
 
 function classGlowColor(cardId: string): string | null {
   try {
@@ -185,6 +221,8 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
   const [discardSelectForCard, setDiscardSelectForCard] = useState<string | null>(null);
   // Bibidi's Creation: which friendly fighter is using the ultimate, awaiting a discard-pile pick
   const [creationSelectForFighter, setCreationSelectForFighter] = useState<number | null>(null);
+  // Fusion Dance Practice: which named hero to pull out of the pile
+  const [tutorSelectForCard, setTutorSelectForCard] = useState<string | null>(null);
   // Capsule Corp: multi-draw pile selection
   const [multiDrawSelect, setMultiDrawSelect] = useState<{
     cardId: string;
@@ -266,6 +304,15 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
   };
   const [chainBeam, setChainBeam] = useState<ChainBeamData | null>(null);
   const chainBeamTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Super Ghost Kamikaze Attack — a ghost drifting from caster to victim, in place of the
+  // beam struggle (nothing is being traded, a trap is being planted).
+  type GhostFlightData = {
+    startPos: { x: number; y: number };
+    endPos: { x: number; y: number };
+  };
+  const [ghostFlight, setGhostFlight] = useState<GhostFlightData | null>(null);
+  const ghostFlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; }, [state]);
   const boardRef = useRef<HTMLDivElement>(null);
@@ -287,6 +334,8 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     phase: string;
     friezaWrathSides: Set<string>;
     winner: GameOutcome | null;
+    // slot key -> cardId of whoever was carrying one of Gotenks's ghosts
+    ghosted: Record<string, string>;
   } | null>(null);
 
   // Reset selection when state changes
@@ -366,18 +415,21 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
       phase: state.phase,
       friezaWrathSides: new Set(state.pendingPromotions.filter(p => p.friezaWrathPending).map(p => p.side)),
       winner: state.winner,
+      ghosted: {} as Record<string, string>,
     };
-    const fill = (slots: Array<{ currentHp: number } | null>, pId: string, side: string) => {
+    type SnapSlot = { currentHp: number; cardId: string; counters: Record<string, number> } | null;
+    const fill = (slots: SnapSlot[], pId: string, side: string) => {
       slots.forEach((f, i) => {
         const k = `${pId}-${side}-${i}`;
         newSnap.hp[k] = f?.currentHp ?? 0;
         newSnap.occupied[k] = f !== null;
+        if (f && (f.counters['ghost'] ?? 0) > 0) newSnap.ghosted[k] = f.cardId;
       });
     };
-    fill(state.players.p1.actives as Array<{ currentHp: number } | null>, 'p1', 'active');
-    fill(state.players.p1.bench as Array<{ currentHp: number } | null>, 'p1', 'bench');
-    fill(state.players.p2.actives as Array<{ currentHp: number } | null>, 'p2', 'active');
-    fill(state.players.p2.bench as Array<{ currentHp: number } | null>, 'p2', 'bench');
+    fill(state.players.p1.actives as SnapSlot[], 'p1', 'active');
+    fill(state.players.p1.bench as SnapSlot[], 'p1', 'bench');
+    fill(state.players.p2.actives as SnapSlot[], 'p2', 'active');
+    fill(state.players.p2.bench as SnapSlot[], 'p2', 'bench');
 
     if (snap) {
       const dmgUpdates = new Map<string, { amount: number; seq: number }>();
@@ -427,6 +479,22 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
         setShakingSlots(prev => new Set([...prev, ...newShake]));
         setTimeout(() => setShakingSlots(prev => { const n = new Set(prev); newShake.forEach(k => n.delete(k)); return n; }), 500);
       }
+      // A ghost going off: a slot that was carrying one still holds the same fighter, but
+      // the ghost is gone. (When the holder dies instead, the ghost is simply lost and the
+      // KO narration below covers it.) Announced ahead of the KO callout so the cause of
+      // the carnage reads first.
+      const ghostFired = Object.entries(snap.ghosted).some(([k, cardId]) => {
+        const [pId, side, idxStr] = k.split('-');
+        const slots = side === 'active'
+          ? state.players[pId as PlayerId].actives
+          : state.players[pId as PlayerId].bench;
+        const f = slots[Number(idxStr)];
+        return !!f && f.cardId === cardId && (f.counters['ghost'] ?? 0) === 0;
+      });
+      if (ghostFired) {
+        setNarration('SUPER GHOST KAMIKAZE ATTACK!');
+        setTimeout(() => setNarration(null), 2500);
+      }
       if (newKo.size > 0) {
         setKoFlashSlots(prev => new Set([...prev, ...newKo]));
         setTimeout(() => setKoFlashSlots(prev => { const n = new Set(prev); newKo.forEach(k => n.delete(k)); return n; }), 700);
@@ -470,7 +538,17 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
         showError(e instanceof Error ? e.message : 'Illegal move');
       }
     }
-    if (intent.type === 'play_hero') { startHeroPlayAnim(intent, dispatch); return; }
+    if (intent.type === 'play_hero') {
+      // Emperor Pilaf's Scheming: an on-play peek at the opponent's hand. Snapshot it
+      // before the intent lands, then show it once the summon animation has played out.
+      if (revealsOpponentHandOnPlay(intent.cardId)) {
+        const snapshot = [...oppPlayer.hand];
+        startHeroPlayAnim(intent, () => { dispatch(); setRevealedOppHand(snapshot); });
+        return;
+      }
+      startHeroPlayAnim(intent, dispatch);
+      return;
+    }
     if (intent.type === 'play_item') {
       const c = (() => { try { return getCard(intent.cardId); } catch { return null; } })();
       if (c?.abilities[0]?.kind === 'recur_from_discard') {
@@ -495,11 +573,14 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     namekian: '#6d28d9',
     frieza_force: '#ff4fa3',
     majin: '#f03fcc',
+    kai: '#7de2e0',
+    rascal: '#ffd447',
   };
 
   function beamColorFor(card: ReturnType<typeof getCard> | null): string {
     if (!card) return '#ff7a18';
-    // Dual-type (Majin Vegeta): use the Saiyan beam rather than the Majin one
+    // Dual-type (Majin Vegeta, and most of the Rascals): use the Saiyan beam rather than
+    // the secondary type's.
     if (card.types?.includes('saiyan')) return BEAM_COLORS.saiyan;
     return BEAM_COLORS[card.fighterType ?? ''] ?? '#ff7a18';
   }
@@ -632,7 +713,10 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
   }, [pendingEnemyAttack]);
 
   useEffect(() => {
-    return () => { if (chainBeamTimerRef.current) clearTimeout(chainBeamTimerRef.current); };
+    return () => {
+      if (chainBeamTimerRef.current) clearTimeout(chainBeamTimerRef.current);
+      if (ghostFlightTimerRef.current) clearTimeout(ghostFlightTimerRef.current);
+    };
   }, []);
 
   // ---- Enemy item/field play animation (AI plays a card) ----
@@ -655,6 +739,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
       if (itemAnimTimerRef.current) clearTimeout(itemAnimTimerRef.current);
       if (beamTimerRef.current) clearTimeout(beamTimerRef.current);
       if (chainBeamTimerRef.current) clearTimeout(chainBeamTimerRef.current);
+      if (ghostFlightTimerRef.current) clearTimeout(ghostFlightTimerRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingEnemyUltimate]);
@@ -731,6 +816,8 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
       pendingCardDispatch.current = null;
     }
     if (itemAnimTimerRef.current) clearTimeout(itemAnimTimerRef.current);
+    if (ghostFlightTimerRef.current) { clearTimeout(ghostFlightTimerRef.current); ghostFlightTimerRef.current = null; }
+    setGhostFlight(null);
     setItemPlayAnim(null);
     setItemAnimPhase('show');
     cardAnimLock.current = false;
@@ -863,7 +950,28 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
 
       // targetSide is only set by friendly-target ultimates (Korin's Senzu Stock) — those
       // support a teammate rather than fire at anyone, so no beam struggle, just the reveal.
-      if (intent.targetIndex !== undefined && intent.targetSide === undefined) {
+      // Trap-planting ultimates (Gotenks) send a ghost across instead of a beam struggle.
+      if (intent.targetIndex !== undefined && intent.targetSide === undefined && ultimateAttachesTrap(cardId)) {
+        const casterEl = board.querySelector(`[data-subslot="active"][data-index="${intent.fighterIndex}"][data-opp="false"]`);
+        const victimEl = board.querySelector(`[data-subslot="active"][data-index="${intent.targetIndex}"][data-opp="true"]`);
+        if (casterEl && victimEl) {
+          const cR = casterEl.getBoundingClientRect();
+          const vR = victimEl.getBoundingClientRect();
+          setGhostFlight({
+            startPos: { x: cR.left + cR.width / 2 - boardRect.left, y: cR.top + cR.height / 2 - boardRect.top },
+            endPos: { x: vR.left + vR.width / 2 - boardRect.left, y: vR.top + vR.height / 2 - boardRect.top },
+          });
+          if (ghostFlightTimerRef.current) clearTimeout(ghostFlightTimerRef.current);
+          ghostFlightTimerRef.current = setTimeout(() => {
+            setGhostFlight(null);
+            if (stateRef.current.turnPlayer === perspectiveId) pendingCardDispatch.current?.();
+            pendingCardDispatch.current = null;
+          }, GHOST_FLIGHT_MS);
+        } else {
+          if (stateRef.current.turnPlayer === perspectiveId) pendingCardDispatch.current?.();
+          pendingCardDispatch.current = null;
+        }
+      } else if (intent.targetIndex !== undefined && intent.targetSide === undefined) {
         // Manipulation (Babidi) forces one enemy Active to attack another — the
         // struggle happens entirely on the opponent's side, not from our caster.
         const isManipulation = intent.secondTargetIndex !== undefined;
@@ -977,8 +1085,27 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
 
       const finishOnce = () => { if (!stateRef.current.winner) onDone(); };
 
-      // See startUltimateAnim: a friendly-target ultimate (targetSide set) draws no beam.
-      if (intent.targetIndex !== undefined && intent.targetSide === undefined) {
+      // Trap-planting ultimate, mirrored: their Gotenks, our fighter on the receiving end.
+      if (intent.targetIndex !== undefined && intent.targetSide === undefined && ultimateAttachesTrap(cardId)) {
+        const casterEl = board.querySelector(`[data-subslot="active"][data-index="${intent.fighterIndex}"][data-opp="true"]`);
+        const victimEl = board.querySelector(`[data-subslot="active"][data-index="${intent.targetIndex}"][data-opp="false"]`);
+        if (casterEl && victimEl) {
+          const cR = casterEl.getBoundingClientRect();
+          const vR = victimEl.getBoundingClientRect();
+          setGhostFlight({
+            startPos: { x: cR.left + cR.width / 2 - boardRect.left, y: cR.top + cR.height / 2 - boardRect.top },
+            endPos: { x: vR.left + vR.width / 2 - boardRect.left, y: vR.top + vR.height / 2 - boardRect.top },
+          });
+          if (ghostFlightTimerRef.current) clearTimeout(ghostFlightTimerRef.current);
+          ghostFlightTimerRef.current = setTimeout(() => {
+            setGhostFlight(null);
+            finishOnce();
+          }, GHOST_FLIGHT_MS);
+        } else {
+          finishOnce();
+        }
+      } else if (intent.targetIndex !== undefined && intent.targetSide === undefined) {
+        // See startUltimateAnim: a friendly-target ultimate (targetSide set) draws no beam.
         const isManipulation = intent.secondTargetIndex !== undefined;
         const aEl = isManipulation
           ? board.querySelector(`[data-subslot="active"][data-index="${intent.targetIndex}"][data-opp="false"]`)
@@ -1193,22 +1320,46 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
         (m.type === 'play_item' && m.cardId === cardId &&
           !('targetIndex' in m) && !('targetSide' in m))
       );
-      if (noTargetMove) {
-        const c = (() => { try { return getCard(cardId); } catch { return null; } })();
-        const abKind = c?.abilities[0]?.kind;
-        if (abKind === 'reveal_and_draw') {
-          setPileSelectForCard(cardId);
-        } else if (abKind === 'draw' && !(c?.abilities[0]?.params as any)?.heroOnly) {
-          const drawCount = (c?.abilities[0]?.params as any)?.draw ?? 1;
-          setMultiDrawSelect({ cardId, totalDraws: drawCount, picks: [] });
-        } else {
-          safeIntent(noTargetMove);
-        }
+      if (noTargetMove && !openNoTargetItemPicker(cardId)) {
+        safeIntent(noTargetMove);
       }
       setSelection({ mode: 'idle' });
       return;
     }
     setSelection({ mode: 'hand_card_selected', handIdx, cardId });
+  }
+
+  // A no-target item can still need a decision before it resolves. Returns true if it
+  // opened a picker instead of playing, so callers know not to dispatch as well.
+  function openNoTargetItemPicker(cardId: string): boolean {
+    const c = (() => { try { return getCard(cardId); } catch { return null; } })();
+    const abKind = c?.abilities[0]?.kind;
+    if (abKind === 'reveal_and_draw') {
+      setPileSelectForCard(cardId);
+      return true;
+    }
+    if (abKind === 'draw' && !(c?.abilities[0]?.params as any)?.heroOnly) {
+      const drawCount = (c?.abilities[0]?.params as any)?.draw ?? 1;
+      setMultiDrawSelect({ cardId, totalDraws: drawCount, picks: [] });
+      return true;
+    }
+    if (abKind === 'tutor') {
+      // Fusion Dance Practice: only worth a prompt when both named heroes are still
+      // available to search up — otherwise there's nothing to choose between.
+      const options = moves.filter(
+        (m): m is Extract<Intent, { type: 'play_item' }> =>
+          m.type === 'play_item' && m.cardId === cardId && m.tutorCardId !== undefined
+      );
+      if (options.length > 1) {
+        setTutorSelectForCard(cardId);
+        return true;
+      }
+      if (options.length === 1) {
+        safeIntent(options[0]);
+        return true;
+      }
+    }
+    return false;
   }
 
   // ---- Field slot tap ----
@@ -1357,7 +1508,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
       if (isOpponent) {
         if (card.cardType === 'item') {
           const abKind = card.abilities[0]?.kind;
-          if (abKind === 'direct_damage' || abKind === 'delayed_damage' || abKind === 'stun') {
+          if (ENEMY_TARGET_ITEM_KINDS.includes(abKind ?? '')) {
             safeIntent({ type: 'play_item', cardId, targetIndex: index });
             setSelection({ mode: 'idle' });
             return;
@@ -1466,20 +1617,12 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     }
 
     if (target.kind === 'notarget') {
-      const abKind = card.abilities[0]?.kind;
       const move = moves.find(m =>
         m.type === 'play_item' && m.cardId === d.cardId &&
         !('targetIndex' in m) && !('targetSide' in m)
       );
-      if (move) {
-        if (abKind === 'reveal_and_draw') {
-          setPileSelectForCard(d.cardId);
-        } else if (abKind === 'draw' && !(card.abilities[0]?.params as any)?.heroOnly) {
-          const drawCount = (card.abilities[0]?.params as any)?.draw ?? 1;
-          setMultiDrawSelect({ cardId: d.cardId, totalDraws: drawCount, picks: [] });
-        } else {
-          safeIntent(move);
-        }
+      if (move && !openNoTargetItemPicker(d.cardId)) {
+        safeIntent(move);
       }
       return false;
     }
@@ -1489,7 +1632,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
     if (isOpp) {
       if (card.cardType === 'item') {
         const abKind = card.abilities[0]?.kind;
-        if (abKind === 'direct_damage' || abKind === 'delayed_damage' || abKind === 'stun') {
+        if (ENEMY_TARGET_ITEM_KINDS.includes(abKind ?? '')) {
           safeIntent({ type: 'play_item', cardId: d.cardId, targetIndex: index });
         }
       }
@@ -1695,6 +1838,15 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
   );
 
   const handToShow = myPlayer.hand;
+
+  // Gotenks's Fusion is the only thing that moves a hero's cost off what its art prints;
+  // returns undefined for every other card so no badge is drawn.
+  function liveDiscountFor(cardId: string): number | undefined {
+    let card; try { card = getCard(cardId); } catch { return undefined; }
+    if (card.cardType !== 'hero') return undefined;
+    const cost = heroPlayCost(card, perspectiveId, state);
+    return cost < card.kiCost ? cost : undefined;
+  }
 
   const isFirstPlayerTurn1 =
     state.phase === 'draw' &&
@@ -1955,6 +2107,96 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
                 style={{ animation: 'chain-impact-pop 0.4s ease-out 0.4s forwards', opacity: 0 } as React.CSSProperties}
               />
             </svg>
+          </div>
+        );
+      })()}
+
+      {/* Super Ghost Kamikaze Attack — a conga line of ghosts weaving across to the victim */}
+      {ghostFlight && (() => {
+        const { startPos, endPos } = ghostFlight;
+        const dx = endPos.x - startPos.x;
+        const dy = endPos.y - startPos.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+        const travelMs = GHOST_TRAVEL_MS;
+        // Three ghosts trailing each other, each on the same wave but phase-shifted.
+        const GHOSTS = [
+          { delay: 0, size: 34, amp: 26, opacity: 1 },
+          { delay: 150, size: 26, amp: 20, opacity: 0.8 },
+          { delay: 300, size: 20, amp: 15, opacity: 0.6 },
+        ];
+        return (
+          <div style={{ position: 'absolute', inset: 0, zIndex: 300, pointerEvents: 'none' }}>
+            {/* Gentle dim so the ghosts read against a busy board, much lighter than a beam clash */}
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.34)', animation: `beam-bg-dim ${GHOST_FLIGHT_MS}ms forwards` }} />
+
+            {GHOSTS.map((g, i) => (
+              <div
+                key={i}
+                style={{
+                  position: 'absolute',
+                  left: startPos.x,
+                  top: startPos.y,
+                  width: 0,
+                  height: 0,
+                  transform: `rotate(${angleDeg}deg)`, // local X now points at the victim
+                }}
+              >
+                <div style={{
+                  position: 'absolute',
+                  left: 0,
+                  top: 0,
+                  width: 0,
+                  height: 0,
+                  ['--gdist' as string]: `${distance}px`,
+                  animation: `ghost-travel ${travelMs}ms cubic-bezier(0.45, 0, 0.55, 1) ${g.delay}ms both`,
+                }}>
+                  <div style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    width: 0,
+                    height: 0,
+                    ['--gamp' as string]: `${g.amp}px`,
+                    animation: `ghost-wave ${travelMs}ms ease-in-out ${g.delay}ms both`,
+                  }}>
+                    <span
+                      style={{
+                        ['--gcounter' as string]: `${-angleDeg}deg`, // keep the emoji upright
+                        position: 'absolute',
+                        left: -g.size / 2,
+                        top: -g.size / 2,
+                        width: g.size,
+                        height: g.size,
+                        fontSize: g.size,
+                        lineHeight: `${g.size}px`,
+                        textAlign: 'center',
+                        opacity: g.opacity,
+                        filter: 'drop-shadow(0 0 10px rgba(190,180,255,0.95)) drop-shadow(0 0 22px rgba(130,87,230,0.7))',
+                        animation: `ghost-body ${travelMs}ms ease-out ${g.delay}ms both`,
+                      }}
+                    >
+                      👻
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {/* Attach flourish on the victim once the lead ghost lands */}
+            <div style={{
+              position: 'absolute',
+              left: endPos.x - 46,
+              top: endPos.y - 46,
+              width: 92,
+              height: 92,
+              borderRadius: '50%',
+              border: '2px solid rgba(210,200,255,0.9)',
+              background: 'radial-gradient(circle, rgba(190,180,255,0.42) 0%, rgba(130,87,230,0.12) 55%, transparent 72%)',
+              boxShadow: '0 0 30px rgba(170,150,255,0.85)',
+              opacity: 0,
+              animation: `ghost-attach 620ms ease-out ${travelMs - 120}ms forwards`,
+            }} />
           </div>
         );
       })()}
@@ -2813,7 +3055,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
                   boxShadow: isHeld && glowColor ? `0 0 22px 6px ${glowColor}` : 'none',
                 }}
               >
-                <HandCard cardId={cardId} isSelected={isHandSelected} />
+                <HandCard cardId={cardId} isSelected={isHandSelected} discountedCost={liveDiscountFor(cardId)} />
               </div>
             );
           });
@@ -2843,7 +3085,7 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
             })(),
           }}
         >
-          <HandCard cardId={drag.cardId} isSelected />
+          <HandCard cardId={drag.cardId} isSelected discountedCost={liveDiscountFor(drag.cardId)} />
         </div>
       )}
 
@@ -2900,6 +3142,20 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
                     setMultiDrawSelect({ cardId: zoomedCard.cardId, totalDraws: drawCount, picks: [] });
                   }
                   setZoomedCard(null);
+                },
+              });
+            }
+          } else if (abKind === 'tutor') {
+            // Fusion Dance Practice — picks its own target out of the pile, so it plays
+            // straight from the zoom sheet rather than needing a board target.
+            if (moves.some(m => m.type === 'play_item' && m.cardId === zoomedCard.cardId)) {
+              zoomActions.push({
+                label: 'PLAY',
+                variant: 'primary',
+                onClick: () => {
+                  const id = zoomedCard.cardId;
+                  setZoomedCard(null);
+                  openNoTargetItemPicker(id);
                 },
               });
             }
@@ -3145,6 +3401,83 @@ export default function GameBoard({ state, onIntent, onTurnEnd, perspective, pen
               })}
               <button
                 onClick={() => setDiscardSelectForCard(null)}
+                style={{
+                  padding: '8px 24px', borderRadius: 8,
+                  border: '1px solid var(--line)', background: 'transparent',
+                  color: 'var(--muted)', fontFamily: 'Saira Condensed, sans-serif',
+                  fontSize: 12, letterSpacing: 1, textTransform: 'uppercase', cursor: 'pointer',
+                }}
+              >
+                CANCEL
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Hero-pile search picker (Fusion Dance Practice) */}
+      {tutorSelectForCard && (() => {
+        const options = moves.filter(
+          (m): m is Extract<Intent, { type: 'play_item' }> =>
+            m.type === 'play_item' && m.cardId === tutorSelectForCard && m.tutorCardId !== undefined
+        );
+        return (
+          <div
+            onClick={() => setTutorSelectForCard(null)}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 500,
+              background: 'rgba(0,0,0,0.88)',
+              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              className="sheet-rise"
+              style={{
+                width: '100%', maxWidth: 430,
+                background: 'var(--panel)', borderRadius: '16px 16px 0 0',
+                padding: 'max(20px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom))',
+                display: 'flex', flexDirection: 'column', gap: 12,
+              }}
+            >
+              <div style={{ fontFamily: 'Bangers, sans-serif', fontSize: 17, color: 'var(--ki)', letterSpacing: 2, textTransform: 'uppercase', textAlign: 'center' }}>
+                Search for which fighter?
+              </div>
+              <div style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, textAlign: 'center' }}>
+                Take it from your Hero pile into your hand
+              </div>
+              {options.map((move) => {
+                const id = move.tutorCardId!;
+                const c = (() => { try { return getCard(id); } catch { return null; } })();
+                return (
+                  <button
+                    key={id}
+                    onClick={() => {
+                      setTutorSelectForCard(null);
+                      safeIntent(move);
+                    }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '10px 14px', borderRadius: 10,
+                      border: '1.5px solid var(--ki)',
+                      background: 'rgba(255,122,24,0.08)',
+                      cursor: 'pointer', textAlign: 'left',
+                    }}
+                  >
+                    {c?.image && (
+                      <img src={`/${c.image}`} alt={c.name ?? id} style={{ width: 40, height: 56, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }} />
+                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span style={{ fontFamily: 'Bangers, sans-serif', fontSize: 15, color: 'var(--ink)', letterSpacing: 1 }}>{c?.name ?? id}</span>
+                      <span style={{ fontFamily: 'Saira Condensed, sans-serif', fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        {c?.kiCost ?? 0} Ki · {c?.hp?.toLocaleString() ?? '?'} HP · ATK {c?.atk?.toLocaleString() ?? '?'}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+              <button
+                onClick={() => setTutorSelectForCard(null)}
                 style={{
                   padding: '8px 24px', borderRadius: 8,
                   border: '1px solid var(--line)', background: 'transparent',

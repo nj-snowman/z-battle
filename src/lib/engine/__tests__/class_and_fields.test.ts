@@ -47,9 +47,9 @@ function fighter(cardId: string, overrides?: Partial<FighterInstance>): FighterI
 // ---- Deck / data validation ----
 
 describe('Deck validation', () => {
-  it('all 7 decks are 10 heroes (counting duplicates) / 8 items / 2 fields, every id resolves', () => {
+  it('all 8 decks are 10 heroes (counting duplicates) / 8 items / 2 fields, every id resolves', () => {
     const cardIds = new Set(ALL_CARDS.map(c => c.id));
-    expect(Object.keys(DECKS)).toHaveLength(7);
+    expect(Object.keys(DECKS)).toHaveLength(8);
     for (const [deckId, deck] of Object.entries(DECKS)) {
       for (const id of [...deck.heroes, ...deck.items]) {
         expect(cardIds.has(id)).toBe(true);
@@ -89,6 +89,7 @@ describe('Deck validation', () => {
       frieza_force: [3, 6, 1],
       majin: [2, 4, 4],
       kai: [5, 1, 4],
+      rascals: [5, 2, 3],
     };
     for (const [deckId, [a, b, c]] of Object.entries(expected)) {
       const tally = { A: 0, B: 0, C: 0 };

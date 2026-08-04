@@ -6,7 +6,12 @@ export type DrawPile = 'hero' | 'item';
 
 export interface StatusEffect {
   key: string; // e.g. 'stun'
-  until: 'their_next_turn' | 'end_of_current_turn';
+  // 'their_next_turn' is cleared at the START of the affected player's turn (it exists to
+  // survive the gap between being applied and that turn beginning — see Chiaotzu/Dabura).
+  // 'end_of_their_next_turn' instead survives INTO that turn and is only cleared once it
+  // ends, which is what a debuff like Prank Kit needs to actually be felt.
+  until: 'their_next_turn' | 'end_of_current_turn' | 'end_of_their_next_turn';
+  value?: number; // signed stat delta for stat-modifying statuses (Prank Kit: atk -1500)
 }
 
 export interface FighterInstance {
@@ -107,7 +112,7 @@ export interface CardDef {
 export type Intent =
   | { type: 'draw'; pile: DrawPile }
   | { type: 'play_hero'; cardId: string; slot: SlotType; index: number; stunTargetIndex?: number }
-  | { type: 'play_item'; cardId: string; targetSide?: SlotType; targetIndex?: number; enemyTargetIndex?: number; promotionIndex?: number; pileChoice?: 'hero' | 'item'; drawChoices?: Array<'hero' | 'item'>; discardIndex?: number }
+  | { type: 'play_item'; cardId: string; targetSide?: SlotType; targetIndex?: number; enemyTargetIndex?: number; promotionIndex?: number; pileChoice?: 'hero' | 'item'; drawChoices?: Array<'hero' | 'item'>; discardIndex?: number; tutorCardId?: string }
   | { type: 'play_field'; cardId: string }
   | { type: 'retreat'; activeIndex: number; benchIndex: number }
   | { type: 'attack'; attackerIndex: number; targetIndex: number; useKaioken?: boolean; useOneShotAbility?: boolean; useTriBeam?: boolean }

@@ -335,6 +335,51 @@ button {
   100% { opacity: 0; transform: scale(1.35); }
 }
 
+/* ---- Super Ghost Kamikaze Attack ----
+   Gotenks's ultimate places a trap rather than trading blows, so it gets a drifting
+   ghost instead of the beam struggle. The motion is composed of three nested layers so
+   the wave stays perpendicular to the flight path at any angle: an outer wrapper rotated
+   to face the target, `ghost-travel` sliding along that local X axis, `ghost-wave`
+   oscillating on the local Y axis, and the emoji itself counter-rotated to stay upright. */
+@keyframes ghost-travel {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(var(--gdist)); }
+}
+
+@keyframes ghost-wave {
+  0%   { transform: translateY(0); }
+  12%  { transform: translateY(calc(var(--gamp) * -1)); }
+  25%  { transform: translateY(0); }
+  37%  { transform: translateY(var(--gamp)); }
+  50%  { transform: translateY(0); }
+  62%  { transform: translateY(calc(var(--gamp) * -1)); }
+  75%  { transform: translateY(0); }
+  87%  { transform: translateY(var(--gamp)); }
+  100% { transform: translateY(0); }
+}
+
+@keyframes ghost-body {
+  0%   { opacity: 0; transform: rotate(var(--gcounter)) scale(0.35); }
+  14%  { opacity: 1; transform: rotate(var(--gcounter)) scale(1.12); }
+  82%  { opacity: 1; transform: rotate(var(--gcounter)) scale(1); }
+  100% { opacity: 0; transform: rotate(var(--gcounter)) scale(0.7); }
+}
+
+/* Faint trail puffs left behind the lead ghost */
+@keyframes ghost-puff {
+  0%   { opacity: 0; transform: scale(0.5); }
+  30%  { opacity: 0.5; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.6); }
+}
+
+/* The tagged card takes on a haunted glow as the ghost latches on */
+@keyframes ghost-attach {
+  0%   { opacity: 0; transform: scale(0.55); }
+  45%  { opacity: 1; transform: scale(1.18); }
+  75%  { opacity: 0.85; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.3); }
+}
+
 /* Safe area padding utilities */
 .safe-bottom {
   padding-bottom: max(12px, env(safe-area-inset-bottom));

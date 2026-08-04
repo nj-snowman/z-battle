@@ -25,6 +25,36 @@ export function buuEvolveCost(next: CardDef, current: CardDef): number {
   return Math.max(0, next.kiCost - (current.buuStage ?? 0));
 }
 
+// What it actually costs THIS player to play this hero right now. Only differs from the
+// printed kiCost for cards carrying a `cost_modifier` ability (Gotenks's Fusion, which
+// discounts 1 Ki per Goten/Kid Trunks on the field, actives and bench alike). There's no
+// printed minimum — the floor is just the engine's usual 0.
+export function heroPlayCost(card: CardDef, playerSide: PlayerId, state: GameState): number {
+  if (isAbilityLocked(card, state)) return card.kiCost;
+  const player = state.players[playerSide];
+  let cost = card.kiCost;
+  for (const ab of card.abilities) {
+    if (ab.kind !== 'cost_modifier') continue;
+    const p = ab.params as any;
+    const ids: string[] = p.countCardIds ?? [];
+    const onField = [...player.actives, ...player.bench].filter(
+      (f): f is FighterInstance => !!f && ids.includes(f.cardId)
+    ).length;
+    cost -= onField * (p.reducePerFighter ?? 0);
+  }
+  return Math.max(0, cost);
+}
+
+// Signed ATK/DEF deltas contributed by temporary statuses on this fighter (Prank Kit).
+// Status-sourced, so never silenced by a field lockout.
+function statusStatMod(fighter: FighterInstance, stat: 'atk' | 'def'): number {
+  let total = 0;
+  for (const st of fighter.statuses) {
+    if (st.key === `${stat}_debuff` && st.value !== undefined) total += st.value;
+  }
+  return total;
+}
+
 // True when a `field_lockout` field is in play and this card's class isn't the
 // protected one — its own printed abilities (passives, triggers, activated,
 // ultimates) go dark for as long as the lock holds. Equipment, items, and field
@@ -53,14 +83,25 @@ export function getEffectiveStats(
   slot: 'active' | 'bench',
   index: number,
   playerSide: PlayerId,
-  state: GameState
+  state: GameState,
+  // Internal: set on the recursive call made while resolving a `stat_borrow`, so the
+  // partner we're reading reports its OWN value instead of trying to borrow back.
+  opts?: { noBorrow?: boolean }
 ): EffectiveStats {
   const card = getCard(fighter.cardId);
   const player = state.players[playerSide];
   const selfLocked = isAbilityLocked(card, state);
 
-  let atk = card.atk ?? 0;
-  let def = card.def ?? 0;
+  // Base and modifiers are tracked apart because a borrowed stat (Goten/Kid Trunks)
+  // replaces only the BASE — the borrower's own modifiers still layer on top, while the
+  // field-class modifiers below are skipped entirely. `fieldAtk`/`fieldDef` are therefore
+  // accumulated separately rather than folded in as they're found.
+  let atkBase = card.atk ?? 0;
+  let defBase = card.def ?? 0;
+  let atk = 0; // own modifiers only, from here down
+  let def = 0;
+  let fieldAtk = 0;
+  let fieldDef = 0;
   const hp = fighter.maxHp;
   let attackKiCost = 1;
 
@@ -76,6 +117,10 @@ export function getEffectiveStats(
       }
     }
   }
+
+  // Temporary stat statuses (Prank Kit's -1,500 ATK)
+  atk += statusStatMod(fighter, 'atk');
+  def += statusStatMod(fighter, 'def');
 
   if (!selfLocked) {
     // Android #17 static_modifier: attackKiCost = 0
@@ -104,6 +149,15 @@ export function getEffectiveStats(
         const p = ab.params as any;
         if (p.atkPerKo) atk += (fighter.counters[ab.key] ?? 0) * p.atkPerKo;
         if (p.defPerTurn) def += (fighter.counters[ab.key] ?? 0) * p.defPerTurn;
+      }
+    }
+
+    // Death-replacement payoff (Kid Gohan's Hidden Power): the permanent ATK counter
+    // stamped on him when the effect saved his life.
+    for (const ab of card.abilities) {
+      if (ab.kind === 'death_replacement') {
+        const p = ab.params as any;
+        if (p.atkBonus) atk += (fighter.counters[ab.key] ?? 0) * p.atkBonus;
       }
     }
 
@@ -142,9 +196,11 @@ export function getEffectiveStats(
   }
 
   // Body-Change swap (Captain Ginyu): stored in counters.swappedAtk — a resolved
-  // printed-stat swap, not an ongoing ability, so unaffected by lockout.
+  // printed-stat swap, not an ongoing ability, so unaffected by lockout. It replaces
+  // everything accumulated above, exactly as before the base/modifier split.
   if (fighter.counters['swappedAtk'] !== undefined) {
-    atk = fighter.counters['swappedAtk'];
+    atkBase = fighter.counters['swappedAtk'];
+    atk = 0;
   }
 
   // Abilities from OTHER fighters (active or bench) that GRANT to this active fighter
@@ -176,15 +232,17 @@ export function getEffectiveStats(
     }
   }
 
-  // Field buffs — field effects are never affected by lockout (they're the field's own effect)
+  // Field buffs — field effects are never affected by lockout (they're the field's own
+  // effect). Kept in their own accumulator so a borrowed stat can ignore them: Goten swings
+  // with Purple Trunks's ATK, so he neither gains nor suffers a Green ATK field modifier.
   if (state.field) {
     const fieldCard = getCard(state.field);
     for (const ab of fieldCard.abilities) {
       if (ab.kind === 'field_class_buff') {
         const p = ab.params as any;
         if (classOf(card) === p.class) {
-          if (p.atk) atk += p.atk;
-          if (p.def) def += p.def;
+          if (p.atk) fieldAtk += p.atk;
+          if (p.def) fieldDef += p.def;
           // hp changes are baked into maxHp at field entry/exit, not recomputed here
         }
       } else if (ab.kind === 'field_rainbow_buff') {
@@ -195,14 +253,38 @@ export function getEffectiveStats(
             .map(f => classOf(getCard(f.cardId)))
             .filter(Boolean)
         ).size;
-        atk += distinctColors * (p.atkPerColor ?? 0);
+        fieldAtk += distinctColors * (p.atkPerColor ?? 0);
       }
     }
   }
 
-  atk = Math.max(0, atk);
+  // Live stat-borrowing (Goten's Best Friends / Kid Trunks's Rival Spirit): while both
+  // partners are this player's Actives, one reads the OTHER's live effective stat in place
+  // of its own base — equipment and field buffs on the partner carry across. This stays
+  // acyclic because Goten only ever borrows ATK and Trunks only ever borrows DEF, so the
+  // stat we read from the partner is never itself borrowed; `noBorrow` enforces that on
+  // the recursive call rather than relying on the data staying well-behaved.
+  let borrowedAtk: number | null = null;
+  let borrowedDef: number | null = null;
+  if (!selfLocked && !opts?.noBorrow && slot === 'active') {
+    for (const ab of card.abilities) {
+      if (ab.kind !== 'stat_borrow') continue;
+      const p = ab.params as any;
+      const partnerIdx = player.actives.findIndex((f, i) => i !== index && !!f && f.cardId === p.partner);
+      if (partnerIdx === -1) continue; // benched, KO'd or never played — both revert to printed
+      const partner = player.actives[partnerIdx]!;
+      const partnerStats = getEffectiveStats(partner, 'active', partnerIdx, playerSide, state, { noBorrow: true });
+      if (p.stat === 'atk') borrowedAtk = partnerStats.atk;
+      else if (p.stat === 'def') borrowedDef = partnerStats.def;
+    }
+  }
 
-  return { atk, def, hp, attackKiCost };
+  const finalAtk = Math.max(0, borrowedAtk !== null ? borrowedAtk + atk : atkBase + atk + fieldAtk);
+  // DEF floors at 0 too — Pilaf's Castle is the first field to hand out a negative, and a
+  // negative DEF would silently amplify incoming damage rather than just removing armour.
+  const finalDef = Math.max(0, borrowedDef !== null ? borrowedDef + def : defBase + def + fieldDef);
+
+  return { atk: finalAtk, def: finalDef, hp, attackKiCost };
 }
 
 export function evaluateCondition(
@@ -235,6 +317,9 @@ export function evaluateCondition(
       return fighter.currentHp >= Math.ceil(fighter.maxHp / 2);
     case 'self_at_full_hp':
       return fighter.currentHp === fighter.maxHp;
+    case 'only_own_fighter_in_play':
+      // Pan's Feisty — she has to be the player's ENTIRE board, bench included.
+      return [...player.actives, ...player.bench].filter(f => f !== null).length === 1;
     case 'own_bench_empty':
       return player.bench.every(b => b === null);
     case 'own_bench_full':

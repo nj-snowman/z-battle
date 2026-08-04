@@ -2,6 +2,13 @@ import { GameState, PlayerId, Intent } from './types';
 import { legalMoves } from './legalMoves';
 import { getCard } from './cards';
 import { getEffectiveStats } from './buffs';
+import { hasGhost } from './combat';
+
+// How much of a fighter's own HP an unspent Gotenks ghost is worth in evaluation terms:
+// swinging with it turns the attacker's whole ATK into damage spread across its own side.
+function ghostLiability(atk: number, ownFighterCount: number): number {
+  return ownFighterCount > 0 ? atk : 0;
+}
 
 export function chooseMoveHeuristic(state: GameState, player: PlayerId): Intent | null {
   // Resolve any pending promotion for this player before anything else
@@ -25,14 +32,17 @@ export function chooseMoveHeuristic(state: GameState, player: PlayerId): Intent 
     target: NonNullable<typeof oppState.actives[0]>,
     targetIdx: number,
     extraAtk = 0,
+    ignoreDef = false,
   ): number {
     const atkStats = getEffectiveStats(attacker, 'active', attackerIdx, player, state);
     const defStats = getEffectiveStats(target, 'active', targetIdx, opp, state);
-    return Math.max(500, atkStats.atk + extraAtk - defStats.def);
+    return Math.max(500, atkStats.atk + extraAtk - (ignoreDef ? 0 : defStats.def));
   }
 
+  // A ghosted fighter's "attack" hits its own side, so it isn't an attacker at all as far
+  // as planning goes — count it out of every offensive calculation below.
   const readyAttackers = ps.actives
-    .map((f, i) => (f && !f.hasAttackedThisTurn && !f.summoningSick ? { f, i } : null))
+    .map((f, i) => (f && !f.hasAttackedThisTurn && !f.summoningSick && !hasGhost(f) ? { f, i } : null))
     .filter(Boolean) as { f: NonNullable<typeof ps.actives[0]>; i: number }[];
 
   const oppActives = oppState.actives
@@ -165,6 +175,20 @@ export function chooseMoveHeuristic(state: GameState, player: PlayerId): Intent 
         })[0];
       }
 
+      // Blunt the biggest enemy attacker before going into battle (Prank Kit)
+      const debuffs = items.filter(m => getCard(m.cardId).abilities[0]?.kind === 'debuff');
+      if (debuffs.length > 0 && oppActives.length > 0) {
+        const best = debuffs
+          .filter(m => m.targetIndex != null && oppState.actives[m.targetIndex])
+          .sort((a, b) => {
+            const fa = oppState.actives[a.targetIndex!]!;
+            const fb = oppState.actives[b.targetIndex!]!;
+            return getEffectiveStats(fb, 'active', b.targetIndex!, opp, state).atk
+                 - getEffectiveStats(fa, 'active', a.targetIndex!, opp, state).atk;
+          })[0];
+        if (best) return best;
+      }
+
       // Heal a fighter below 60% HP
       const heals = items.filter(m => {
         if (getCard(m.cardId).abilities[0]?.kind !== 'heal') return false;
@@ -192,7 +216,7 @@ export function chooseMoveHeuristic(state: GameState, player: PlayerId): Intent 
       // Draw/utility items
       const utilItems = items.filter(m => {
         const kind = getCard(m.cardId).abilities[0]?.kind;
-        return kind === 'draw' || kind === 'reveal_and_draw' || kind === 'recur_from_discard';
+        return kind === 'draw' || kind === 'reveal_and_draw' || kind === 'recur_from_discard' || kind === 'tutor';
       });
       if (utilItems.length > 0) {
         // For recur_from_discard, pick the highest-Ki-cost (most powerful) Namekian
@@ -220,12 +244,35 @@ export function chooseMoveHeuristic(state: GameState, player: PlayerId): Intent 
     }
 
     case 'battle': {
+      // Never swing with a ghosted fighter — that attack deals nothing to the target and
+      // splits its ATK across our own board instead.
+      const notGhosted = (m: Extract<Intent, { type: 'attack' }>) => {
+        const a = ps.actives[m.attackerIndex];
+        return !!a && !hasGhost(a);
+      };
       const baseAttacks = moves
         .filter((m): m is Extract<Intent, { type: 'attack' }> => m.type === 'attack')
-        .filter(m => !m.useKaioken && !m.useOneShotAbility && !m.useTriBeam);
+        .filter(m => !m.useKaioken && !m.useOneShotAbility && !m.useTriBeam)
+        .filter(notGhosted);
       const kaiokenAttacks = moves
-        .filter((m): m is Extract<Intent, { type: 'attack' }> => m.type === 'attack' && !!m.useKaioken);
-      const ultimates = moves.filter(m => m.type === 'ultimate');
+        .filter((m): m is Extract<Intent, { type: 'attack' }> => m.type === 'attack' && !!m.useKaioken)
+        .filter(notGhosted);
+      const oneShotAttacks = moves
+        .filter((m): m is Extract<Intent, { type: 'attack' }> => m.type === 'attack' && !!m.useOneShotAbility)
+        .filter(notGhosted);
+      const ultimates = moves
+        .filter((m): m is Extract<Intent, { type: 'ultimate' }> => m.type === 'ultimate')
+        // Don't burn a once-per-game self-heal (Uub's Reincarnation) on a healthy fighter
+        .filter(m => {
+          const f = ps.actives[m.fighterIndex];
+          if (!f) return false;
+          const ult = getCard(f.cardId).abilities.find(
+            ab => ab.kind === 'ultimate' || ab.kind === 'activated_one_shot'
+          );
+          const p = (ult?.params ?? {}) as any;
+          if (p.target === 'self' && p.healToFull) return f.currentHp <= f.maxHp * 0.5;
+          return true;
+        });
 
       // Killing blow with base attack
       for (const move of baseAttacks) {
@@ -241,6 +288,17 @@ export function chooseMoveHeuristic(state: GameState, player: PlayerId): Intent 
         const target = oppState.actives[move.targetIndex];
         if (!attacker || !target) continue;
         if (estimateDamage(attacker, move.attackerIndex, target, move.targetIndex, 3000) >= target.currentHp) return move;
+      }
+
+      // Killing blow with a once-per-game ignore-DEF attack — free to use, so only worth
+      // spending when it actually converts into a KO the plain swing wouldn't get.
+      for (const move of oneShotAttacks) {
+        const attacker = ps.actives[move.attackerIndex];
+        const target = oppState.actives[move.targetIndex];
+        if (!attacker || !target) continue;
+        const plain = estimateDamage(attacker, move.attackerIndex, target, move.targetIndex);
+        if (plain >= target.currentHp) continue; // the normal attack already kills — save it
+        if (estimateDamage(attacker, move.attackerIndex, target, move.targetIndex, 0, true) >= target.currentHp) return move;
       }
 
       // Use ultimate if available
@@ -280,13 +338,13 @@ export function scoreMoveHeuristically(state: GameState, player: PlayerId, inten
   const opp: PlayerId = player === 'p1' ? 'p2' : 'p1';
   const ps = state.players[player];
 
-  function estimateDamage(attackerIdx: number, targetIdx: number, extraAtk = 0): number {
+  function estimateDamage(attackerIdx: number, targetIdx: number, extraAtk = 0, ignoreDef = false): number {
     const attacker = ps.actives[attackerIdx];
     const target = state.players[opp].actives[targetIdx];
     if (!attacker || !target) return 0;
     const atkStats = getEffectiveStats(attacker, 'active', attackerIdx, player, state);
     const defStats = getEffectiveStats(target, 'active', targetIdx, opp, state);
-    return Math.max(500, atkStats.atk + extraAtk - defStats.def);
+    return Math.max(500, atkStats.atk + extraAtk - (ignoreDef ? 0 : defStats.def));
   }
 
   switch (intent.type) {
@@ -297,14 +355,48 @@ export function scoreMoveHeuristically(state: GameState, player: PlayerId, inten
     case 'attack': {
       const target = state.players[opp].actives[intent.targetIndex];
       if (!target) return -1000;
-      const dmg = estimateDamage(intent.attackerIndex, intent.targetIndex, intent.useKaioken ? 3000 : 0);
+      const attacker = ps.actives[intent.attackerIndex];
+      // Carrying one of Gotenks's ghosts: this swing deals nothing to the target and
+      // shares the attacker's ATK across our own board. Deprioritised rather than pruned
+      // outright, since discharging it cheaply into a wide healthy board is occasionally
+      // the right call and the search should still be free to find that.
+      if (attacker && hasGhost(attacker)) {
+        const own = [...ps.actives, ...ps.bench].filter(f => f !== null).length;
+        const atk = getEffectiveStats(attacker, 'active', intent.attackerIndex, player, state).atk;
+        return -5000 - ghostLiability(atk, own) / 10;
+      }
+      const dmg = estimateDamage(
+        intent.attackerIndex,
+        intent.targetIndex,
+        intent.useKaioken ? 3000 : 0,
+        !!intent.useOneShotAbility,
+      );
       let score = 500 + dmg / 10;
       if (dmg >= target.currentHp) score += 100000; // lethal this attack
+      // Burning a once-per-game ignore-DEF shot that a plain swing would have matched is
+      // pure waste — rank it below the identical normal attack unless the DEF it skips
+      // is actually buying something.
+      if (intent.useOneShotAbility) {
+        const plain = estimateDamage(intent.attackerIndex, intent.targetIndex);
+        score -= plain >= target.currentHp ? 2000 : 200;
+      }
       return score;
     }
 
-    case 'ultimate':
+    case 'ultimate': {
+      // A free-action self-heal is worth exactly the HP it restores, not the usual
+      // "fire the big once-per-game button" premium.
+      const f = ps.actives[intent.fighterIndex];
+      const ult = f && getCard(f.cardId).abilities.find(
+        ab => ab.kind === 'ultimate' || ab.kind === 'activated_one_shot'
+      );
+      const p = (ult?.params ?? {}) as any;
+      if (f && p.target === 'self' && p.healToFull) {
+        const missing = f.maxHp - f.currentHp;
+        return missing <= 0 ? -500 : 800 + missing / 10;
+      }
       return 20000; // high-impact, often once-per-game — prioritize using it
+    }
 
     case 'play_item': {
       const card = getCard(intent.cardId);
@@ -326,6 +418,15 @@ export function scoreMoveHeuristically(state: GameState, player: PlayerId, inten
       if (card.itemClass === 'equipment') {
         return intent.targetSide === 'active' ? 2000 : 900;
       }
+      if (kind === 'debuff') {
+        const target = intent.targetIndex != null ? state.players[opp].actives[intent.targetIndex] : null;
+        if (!target) return 0;
+        // Worth most against the biggest hitter — that's the ATK we're actually removing.
+        const atk = getEffectiveStats(target, 'active', intent.targetIndex!, opp, state).atk;
+        return 900 + atk / 10;
+      }
+      // Tutoring is card advantage AND fixes a specific hand — a touch above a raw draw.
+      if (kind === 'tutor') return 500;
       if (kind === 'draw' || kind === 'reveal_and_draw' || kind === 'recur_from_discard') return 300;
       if (kind === 'sacrifice_for_damage') return -800; // still sacrifices a friendly fighter
       return 200;

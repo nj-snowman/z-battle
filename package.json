@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "jest"
+    "test": "jest",
+    "playtest": "jest --testMatch='**/scripts/playtest.test.ts'"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.107.0",

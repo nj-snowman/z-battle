@@ -1,4 +1,4 @@
-import { GameState, PlayerId, PendingPromotion, CardDef } from './types';
+import { GameState, PlayerId, PendingPromotion, CardDef, FighterInstance } from './types';
 import { getCard } from './cards';
 import { getEffectiveStats, cardTypesOf, classOf, isAbilityLocked } from './buffs';
 import { checkWinLoss } from './utils';
@@ -369,8 +369,40 @@ function applyDamageToFighterCore(
     s = { ...s, discard: [...s.discard, { cardId: 'barrier_field', owner: side }] };
   }
 
-  const newHp = Math.max(0, fighter.currentHp - actualDamage);
-  const updatedFighter = { ...fighter, currentHp: newHp, equipment: newEquipment };
+  // Intrinsic damage negation (Shu's Ninja Dog) — a once-per-game shave off the first hit
+  // he takes, resolved automatically rather than activated. Same slot in the pipeline as
+  // Barrier Field, but sourced from the hero, so a field lockout silences it.
+  const fighterCard = getCard(fighter.cardId);
+  let oncePerGameUsed = fighter.oncePerGameUsed;
+  if (actualDamage > 0 && !isAbilityLocked(fighterCard, s)) {
+    for (const ab of fighterCard.abilities) {
+      if (ab.kind !== 'damage_negate') continue;
+      if (oncePerGameUsed[ab.key]) continue;
+      const p = ab.params as any;
+      actualDamage = Math.max(0, actualDamage - (p.negate ?? 0));
+      oncePerGameUsed = { ...oncePerGameUsed, [ab.key]: true };
+    }
+  }
+
+  let newHp = Math.max(0, fighter.currentHp - actualDamage);
+  let counters = fighter.counters;
+
+  // Death replacement (Kid Gohan's Hidden Power): intercept the KO before it resolves —
+  // no score for the opponent and no on-KO triggers, since resolveKo is never reached.
+  // He's set to exactly 1 HP and takes a permanent ATK counter, once per game.
+  if (newHp <= 0 && !isAbilityLocked(fighterCard, s)) {
+    for (const ab of fighterCard.abilities) {
+      if (ab.kind !== 'death_replacement') continue;
+      if (oncePerGameUsed[ab.key]) continue;
+      const p = ab.params as any;
+      newHp = p.surviveAtHp ?? 1;
+      counters = { ...counters, [ab.key]: (counters[ab.key] ?? 0) + 1 };
+      oncePerGameUsed = { ...oncePerGameUsed, [ab.key]: true };
+      break;
+    }
+  }
+
+  const updatedFighter = { ...fighter, currentHp: newHp, equipment: newEquipment, oncePerGameUsed, counters };
 
   const updatedSlots = [...(slot === 'active' ? s.players[side].actives : s.players[side].bench)] as typeof player.actives;
   updatedSlots[index] = updatedFighter;
@@ -442,6 +474,65 @@ function triggerOnDealDamage(s: GameState, attackerSide: PlayerId, attackerIndex
   return s;
 }
 
+// Counter key marking a fighter as carrying one of Gotenks's ghosts. Stored on the
+// FighterInstance rather than as a status so it has no expiry and rides along through
+// retreats and bench time — it only ever leaves by being consumed or by the host being KO'd
+// (the instance goes to discard with it, and it does not transfer to the replacement).
+export const GHOST_COUNTER = 'ghost';
+
+export function hasGhost(f: FighterInstance): boolean {
+  return (f.counters[GHOST_COUNTER] ?? 0) > 0;
+}
+
+// The ghost going off. The tagged fighter's basic attack deals nothing to its target;
+// instead its effective ATK is split evenly across every fighter its own controller has in
+// play (both Actives and both Bench, counted at trigger time) as flat DEF-ignoring damage.
+// KOs are credited to the player who placed the ghost, so they score. Inverse of Planet
+// Burst: the thinner the victim's board, the harder each share hits.
+function resolveGhostedAttack(
+  s: GameState,
+  attackerSide: PlayerId,
+  attackerIndex: number,
+  ghostOwnerSide: PlayerId,
+  attackerAtk: number
+): GameState {
+  const player = s.players[attackerSide];
+  const attacker = player.actives[attackerIndex];
+  if (!attacker) return s;
+
+  // Spend the attack and the ghost up front, so both are gone even if the blast KOs the
+  // attacker itself (it's one of the fighters sharing the damage).
+  const { [GHOST_COUNTER]: _spent, ...restCounters } = attacker.counters;
+  const newActives = [...player.actives] as typeof player.actives;
+  newActives[attackerIndex] = { ...attacker, hasAttackedThisTurn: true, counters: restCounters };
+  s = { ...s, players: { ...s.players, [attackerSide]: { ...player, actives: newActives } } };
+
+  const kiCost = getEffectiveStats(newActives[attackerIndex]!, 'active', attackerIndex, attackerSide, s).attackKiCost;
+  if (kiCost > 0) {
+    const pl = s.players[attackerSide];
+    s = { ...s, players: { ...s.players, [attackerSide]: { ...pl, kiCurrent: pl.kiCurrent - kiCost } } };
+  }
+
+  const victims: Array<{ slot: 'active' | 'bench'; index: number }> = [];
+  s.players[attackerSide].bench.forEach((f, i) => { if (f) victims.push({ slot: 'bench', index: i }); });
+  s.players[attackerSide].actives.forEach((f, i) => { if (f) victims.push({ slot: 'active', index: i }); });
+  if (victims.length === 0) return checkWinLoss(s);
+
+  // Exact split, rounded to the nearest whole point: only an odd fighter count divides a
+  // 500-multiple unevenly, and fractional HP has nowhere sensible to render.
+  const each = Math.round(attackerAtk / victims.length);
+
+  // Bench before actives, so a promotion queued by an active's death already sees the
+  // final bench state (same ordering rule as Planet Burst).
+  for (const v of victims) {
+    const slots = v.slot === 'active' ? s.players[attackerSide].actives : s.players[attackerSide].bench;
+    if (!slots[v.index]) continue; // already removed by an earlier share
+    s = applyDamageToFighter(s, attackerSide, v.slot, v.index, each, ghostOwnerSide);
+  }
+
+  return checkWinLoss(s);
+}
+
 export function resolveBasicAttack(
   s: GameState,
   attackerSide: PlayerId,
@@ -460,6 +551,12 @@ export function resolveBasicAttack(
 
   const attackerStats = getEffectiveStats(attacker, 'active', attackerIndex, attackerSide, s);
   const targetStats = getEffectiveStats(target, 'active', targetIndex, targetSide, s);
+
+  // Gotenks's ghost: this attacker was tagged by Super Ghost Kamikaze Attack, so the swing
+  // lands on its own side instead of the target. Resolved before any normal damage maths.
+  if (attacker.counters[GHOST_COUNTER]) {
+    return resolveGhostedAttack(s, attackerSide, attackerIndex, targetSide, attackerStats.atk);
+  }
 
   let atkValue = attackerStats.atk;
 

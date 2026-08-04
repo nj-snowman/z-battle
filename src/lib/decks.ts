@@ -15,6 +15,7 @@ const DECK_STYLES: Record<string, { name: string; color: string }> = {
   frieza_force: { name: 'Frieza Force', color: '#b44dff' },
   majin: { name: 'Majin', color: '#f03fcc' },
   kai: { name: 'Kai', color: '#7de2e0' },
+  rascals: { name: 'Rascals', color: '#ffd447' },
 };
 
 // cards.json lists decks in its own order; pickers want this one.

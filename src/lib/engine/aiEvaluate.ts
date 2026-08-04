@@ -38,6 +38,14 @@ function sumEffectivePower(state: GameState, side: PlayerId): number {
   return total;
 }
 
+// A fighter carrying one of Gotenks's ghosts is a stalled attacker: swinging with it deals
+// nothing to the enemy and splits its ATK across its own side, so it's effectively benched
+// until someone spends the tempo to work around it. Scored as a flat drag per ghost rather
+// than modelling the eventual blast, which the search will see for itself once in range.
+function countGhosts(ps: PlayerState): number {
+  return [...ps.actives, ...ps.bench].filter(f => f && (f.counters['ghost'] ?? 0) > 0).length;
+}
+
 function countReadyAttackers(ps: PlayerState): number {
   return ps.actives.filter(
     f => f && !f.hasAttackedThisTurn && !f.summoningSick && !f.statuses.some(st => st.key === 'stun')
@@ -85,6 +93,11 @@ export function evaluate(state: GameState, forPlayer: PlayerId): number {
   // "staying ready" outscore actually dealing damage — the exact bug that made evenly-matched,
   // high-HP fighters (e.g. a Namekian mirror) refuse to ever attack, stalling the game forever.
   score += (countReadyAttackers(me) - countReadyAttackers(them)) * 10;
+
+  // 5b. Attached ghosts — sits in the tempo tier, but weighted well above a single ready
+  // attacker: a ghost doesn't just cost this turn's swing, it neutralises that fighter's
+  // offence until it's dealt with.
+  score += (countGhosts(them) - countGhosts(me)) * 400;
 
   // 6. Hand/card advantage (heroes weighted 2x items — the scarcer resource)
   score += (handValue(me) - handValue(them)) * 150;

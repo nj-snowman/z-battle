@@ -16,6 +16,6 @@ describe('DECK_OPTIONS', () => {
   });
 
   it('lists the known decks in display order', () => {
-    expect(DECK_IDS).toEqual(['saiyan', 'namekian', 'android', 'human', 'frieza_force', 'majin', 'kai']);
+    expect(DECK_IDS).toEqual(['saiyan', 'namekian', 'android', 'human', 'frieza_force', 'majin', 'kai', 'rascals']);
   });
 });

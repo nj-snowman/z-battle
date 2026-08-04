@@ -1,6 +1,6 @@
 import { GameState, PlayerId, Intent } from './types';
 import { getCard } from './cards';
-import { getEffectiveStats, isType, cardTypesOf, isAbilityLocked, buuEvolveCost } from './buffs';
+import { getEffectiveStats, isType, cardTypesOf, isAbilityLocked, buuEvolveCost, heroPlayCost } from './buffs';
 
 // Shared by the Battle-phase ultimate handling and the Main-phase handling for abilities
 // flagged usableInMainPhase (e.g. Bibidi's Creation) — offers reviving each of the
@@ -45,7 +45,7 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
       const hasActiveHero = ps.actives.some(f => f !== null);
       const canDeployActiveHero = !hasActiveHero && ps.hand.some(id => {
         const c = getCard(id);
-        return c.cardType === 'hero' && ps.kiCurrent >= c.kiCost && ps.actives.some(slot => slot === null);
+        return c.cardType === 'hero' && ps.kiCurrent >= heroPlayCost(c, player, state) && ps.actives.some(slot => slot === null);
       });
 
       // Play heroes
@@ -53,7 +53,8 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
       for (const cardId of ps.hand) {
         const card = getCard(cardId);
         if (card.cardType !== 'hero') continue;
-        if (ps.kiCurrent < card.kiCost) continue;
+        // heroPlayCost, not the printed cost — Gotenks gets cheaper with kids on the field
+        if (ps.kiCurrent < heroPlayCost(card, player, state)) continue;
         // Bench is only offered once both active slots are filled — an empty
         // active must be filled (or refilled after a KO) before benching a hero.
         const allowedSlots: Array<'active' | 'bench'> =
@@ -111,12 +112,23 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
                 }
               }
             }
-          } else if (abKind === 'direct_damage' || abKind === 'delayed_damage' || abKind === 'stun') {
+          } else if (abKind === 'direct_damage' || abKind === 'delayed_damage' || abKind === 'stun' || abKind === 'debuff') {
             for (let i = 0; i < oppState.actives.length; i++) {
               if (oppState.actives[i]) moves.push({ type: 'play_item', cardId, targetIndex: i });
             }
           } else if (abKind === 'draw' || abKind === 'reveal_and_draw') {
             moves.push({ type: 'play_item', cardId });
+          } else if (abKind === 'tutor') {
+            // Fusion Dance Practice — one move per named card actually left in the pile,
+            // so it's never offered as a card that would fizzle.
+            const p = card.abilities[0].params as any;
+            const from: 'hero' | 'item' = p.from ?? 'hero';
+            const allowed: string[] = p.cardIds ?? [];
+            for (const tutorCardId of allowed) {
+              if (ps.piles[from].includes(tutorCardId)) {
+                moves.push({ type: 'play_item', cardId, tutorCardId });
+              }
+            }
           } else if (abKind === 'recur_from_discard') {
             const type = (card.abilities[0].params as any).type;
             state.discard.forEach((entry, discardIndex) => {
@@ -241,15 +253,18 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
     case 'battle': {
       for (let i = 0; i < ps.actives.length; i++) {
         const f = ps.actives[i];
-        if (!f || f.hasAttackedThisTurn) continue;
+        if (!f) continue;
         if (f.statuses.some(st => st.key === 'stun')) continue;
 
         const stats = getEffectiveStats(f, 'active', i, player, state);
         const card = getCard(f.cardId);
         const locked = isAbilityLocked(card, state);
+        // A spent fighter can still use a free-action ability (Uub's Reincarnation), so
+        // this only gates attacks — the ultimate block below re-checks it per ability.
+        const spent = f.hasAttackedThisTurn;
 
         // Normal attacks against each enemy active — still blocked by summoning sickness
-        if (!f.summoningSick) {
+        if (!spent && !f.summoningSick) {
           for (let ti = 0; ti < oppState.actives.length; ti++) {
             if (!oppState.actives[ti]) continue;
             if (ps.kiCurrent >= stats.attackKiCost || stats.attackKiCost === 0) {
@@ -260,6 +275,15 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
             if (kaioken && !locked && ps.kiCurrent >= stats.attackKiCost + 2) {
               moves.push({ type: 'attack', attackerIndex: i, targetIndex: ti, useKaioken: true });
             }
+            // One-shot ignore-DEF attack (Kid Goku's Power Pole, Krillin's Destructo Disc,
+            // Future Trunks's Burning Attack, Recoome's Eraser Gun). Costs nothing beyond the
+            // normal attack, so it's always at least as good as the plain swing — it was
+            // simply never offered here, which meant only a human could ever fire one.
+            const oneShot = card.abilities.find(ab => ab.kind === 'one_shot_on_attack');
+            if (oneShot && !locked && !f.oncePerGameUsed[oneShot.key] &&
+                (ps.kiCurrent >= stats.attackKiCost || stats.attackKiCost === 0)) {
+              moves.push({ type: 'attack', attackerIndex: i, targetIndex: ti, useOneShotAbility: true });
+            }
           }
         }
 
@@ -269,9 +293,14 @@ export function legalMoves(state: GameState, player: PlayerId): Intent[] {
         // ignoresSummoningSickness (e.g. Korin's Senzu Stock).
         const ult = locked ? undefined : card.abilities.find(ab => ab.kind === 'ultimate' || ab.kind === 'activated_one_shot');
         const ultSicknessOk = !f.summoningSick || !!(ult?.params as any)?.ignoresSummoningSickness;
-        if (ult && ultSicknessOk && !f.oncePerGameUsed[ult.key] && ps.kiCurrent >= 1) {
+        const ultActionOk = !spent || !!(ult?.params as any)?.doesNotConsumeAttack;
+        const ultKiCost: number = (ult?.params as any)?.kiCost ?? 1;
+        if (ult && ultSicknessOk && ultActionOk && !f.oncePerGameUsed[ult.key] && ps.kiCurrent >= ultKiCost) {
           const p = ult.params as any;
-          if (p.target === 'all_enemy_actives' || p.target === 'all_enemy_fighters_including_bench') {
+          if (p.target === 'self') {
+            // Uub's Reincarnation — no target to pick, it only ever affects the caster.
+            moves.push({ type: 'ultimate', fighterIndex: i });
+          } else if (p.target === 'all_enemy_actives' || p.target === 'all_enemy_fighters_including_bench') {
             moves.push({ type: 'ultimate', fighterIndex: i });
           } else if (p.target === 'one_enemy_active') {
             for (let ti = 0; ti < oppState.actives.length; ti++) {
