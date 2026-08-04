@@ -63,18 +63,77 @@ describe('star costs the policy is reasoned against', () => {
   });
 });
 
+// Every "takes an item" case needs at least 4 bodies between hand and board, otherwise
+// the board-capacity clause fires first and asks for a hero regardless.
 describe('Draw policy — items are the default', () => {
   it('takes an item when the hand can already improve the board', () => {
     const s = makeState();
     s.players.p1.actives[0] = fighter('pan');       // 2-star deployed
+    s.players.p1.actives[1] = fighter('shu');
+    s.players.p1.bench[0] = fighter('mai');
     s.players.p1.hand = ['kid_goku', 'masenko'];    // 5-star waiting — no need for more
     expect(pileOf(s)).toBe('item');
   });
 
-  it('takes an item on an empty board while holding heroes to deploy', () => {
+  it('takes an item once the board is stocked, even with heroes still in hand', () => {
     const s = makeState();
-    s.players.p1.hand = ['goten', 'shu'];
+    s.players.p1.actives[0] = fighter('pan');
+    s.players.p1.actives[1] = fighter('shu');
+    s.players.p1.hand = ['kid_goku', 'goten'];      // 4 bodies total
     expect(pileOf(s)).toBe('item');
+  });
+});
+
+describe('Draw policy — keep feeding the board while there are slots', () => {
+  it('takes a hero on an empty board even holding one to deploy', () => {
+    // One hero in hand, nothing out: three slots would still be empty after playing it.
+    const s = makeState();
+    s.players.p1.hand = ['goten', 'masenko'];
+    expect(pileOf(s)).toBe('hero');
+  });
+
+  it('keeps taking heroes up to four bodies, then defers to the curve rules', () => {
+    const s = makeState();
+    s.players.p1.actives[0] = fighter('pan');   // 2-star out
+    s.players.p1.hand = ['kid_goku'];           // 5-star upgrade waiting, but 2 bodies
+    expect(pileOf(s)).toBe('hero');
+
+    s.players.p1.actives[1] = fighter('shu');   // 3 bodies
+    expect(pileOf(s)).toBe('hero');
+
+    // 4 bodies — capacity is satisfied, so the "is there an upgrade in hand?" rule takes
+    // over, and there is one (5-star vs a 2-star board).
+    s.players.p1.bench[0] = fighter('mai');
+    expect(pileOf(s)).toBe('item');
+  });
+
+  it('still takes heroes at four bodies when none of them improves the board', () => {
+    const s = makeState();
+    s.players.p1.actives[0] = fighter('kid_goku'); // strong 5-star already out
+    s.players.p1.actives[1] = fighter('pan');
+    s.players.p1.bench[0] = fighter('mai');
+    s.players.p1.hand = ['shu'];                   // 4 bodies, but nothing above a 5-star
+    expect(pileOf(s)).toBe('hero');
+  });
+
+  it('overrides the 6-star "not desperate" rule while the board is thin', () => {
+    // A lone Gotenks would otherwise say "you're covered, take items" with 3 slots empty.
+    const s = makeState();
+    s.players.p1.actives[0] = fighter('gotenks');
+    s.players.p1.hand = ['kid_goku'];
+    expect(pileOf(s)).toBe('hero');
+  });
+
+  it('counts heroes in hand as bodies, and ignores items in the count', () => {
+    const s = makeState();
+    s.players.p1.actives[0] = fighter('gotenks');
+    // 3 heroes in hand + Gotenks deployed = 4 bodies. The item alongside them doesn't count.
+    s.players.p1.hand = ['kid_goku', 'goten', 'pan', 'masenko'];
+    expect(pileOf(s)).toBe('item');
+
+    // Drop one hero and it's 3 bodies again, so the board still wants filling.
+    s.players.p1.hand = ['kid_goku', 'goten', 'masenko'];
+    expect(pileOf(s)).toBe('hero');
   });
 });
 
@@ -103,10 +162,14 @@ describe('Draw policy — hero when the board would stall', () => {
   });
 });
 
+// These isolate the curve rules, so each keeps 4+ bodies on hand/board — otherwise the
+// board-capacity clause answers first and the branch under test never runs.
 describe('Draw policy — a 6-star means you are not desperate', () => {
   it('takes an item with a 6-star on the field and a healthy curve under it', () => {
     const s = makeState();
     s.players.p1.actives[0] = fighter('gotenks');  // 6-star
+    s.players.p1.actives[1] = fighter('shu');
+    s.players.p1.bench[0] = fighter('pan');
     s.players.p1.hand = ['kid_goku'];              // 5-star bridges fine
     expect(pileOf(s)).toBe('item');
   });
@@ -114,15 +177,19 @@ describe('Draw policy — a 6-star means you are not desperate', () => {
   it('takes an item with a 6-star in hand and a 4-star bridging', () => {
     const s = makeState();
     s.players.p1.actives[0] = fighter('goten');    // 4-star
+    s.players.p1.actives[1] = fighter('shu');
+    s.players.p1.bench[0] = fighter('pan');
     s.players.p1.hand = ['gotenks'];               // 6-star in hand
     expect(pileOf(s)).toBe('item');
   });
 
   it('draws a hero when a 6-star sits above a hole — a 3 and a 6 with no 4 or 5', () => {
-    // The stated risk case.
+    // The stated risk case. Board is otherwise stocked, so only the gap can trigger this.
     const s = makeState();
     s.players.p1.actives[0] = fighter('kid_gohan'); // 3-star
-    s.players.p1.hand = ['gotenks'];                // 6-star, nothing between
+    s.players.p1.actives[1] = fighter('pan');       // 2-star
+    s.players.p1.bench[0] = fighter('shu');         // 1-star
+    s.players.p1.hand = ['gotenks'];                // 6-star, nothing in the 4-5 band
     expect(pileOf(s)).toBe('hero');
   });
 
@@ -130,6 +197,7 @@ describe('Draw policy — a 6-star means you are not desperate', () => {
     const s = makeState();
     s.players.p1.actives[0] = fighter('kid_gohan'); // 3-star
     s.players.p1.actives[1] = fighter('goten');     // 4-star fills the hole
+    s.players.p1.bench[0] = fighter('shu');
     s.players.p1.hand = ['gotenks'];
     expect(pileOf(s)).toBe('item');
   });
@@ -145,15 +213,19 @@ describe('Draw policy — safety and availability', () => {
   });
 
   it('falls back to whichever pile still has cards', () => {
+    // Stocked board + an upgrade in hand: the policy wants an item, but there are none.
     const s = makeState();
     s.players.p1.actives[0] = fighter('pan');
-    s.players.p1.hand = ['kid_goku']; // would prefer item...
+    s.players.p1.actives[1] = fighter('shu');
+    s.players.p1.bench[0] = fighter('mai');
+    s.players.p1.hand = ['kid_goku'];
     s.players.p1.piles = { hero: ['goten'], item: [] };
     expect(pileOf(s)).toBe('hero');
 
+    // Thin board: the policy wants a hero, but the hero pile is spent.
     const s2 = makeState();
     s2.players.p1.actives[0] = fighter('goten');
-    s2.players.p1.hand = ['shu']; // would prefer hero...
+    s2.players.p1.hand = ['shu'];
     s2.players.p1.piles = { hero: [], item: ['masenko'] };
     expect(pileOf(s2)).toBe('item');
   });
@@ -170,7 +242,9 @@ describe('Draw policy is applied at every difficulty', () => {
     for (const difficulty of ['medium', 'hard', 'strongest'] as Difficulty[]) {
       const s = makeState();
       s.players.p1.actives[0] = fighter('pan');
-      s.players.p1.hand = ['kid_goku', 'masenko']; // upgrade in hand -> item
+      s.players.p1.actives[1] = fighter('shu');
+      s.players.p1.bench[0] = fighter('mai');
+      s.players.p1.hand = ['kid_goku', 'masenko']; // stocked board + upgrade -> item
       const m = chooseMove(s, 'p1', difficulty);
       expect([difficulty, m]).toEqual([difficulty, { type: 'draw', pile: 'item' }]);
     }

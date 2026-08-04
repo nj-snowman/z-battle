@@ -28,6 +28,9 @@ const TOP_TIER_KI = 6;
 // Highest "next best" Ki cost that still counts as a hole under a 6-star. A 3 and a 6 with
 // nothing between them is the gap the rule is aimed at; a 4 or 5 bridges it fine.
 const CURVE_GAP_CEILING = 3;
+// Board capacity: 2 Actives + 2 Bench. Below this many bodies between hand and field
+// there's somewhere to put another hero, so keep feeding the board.
+const BOARD_CAPACITY = 4;
 
 function wantsHeroDraw(state: GameState, player: PlayerId): boolean {
   const ps = state.players[player];
@@ -39,6 +42,14 @@ function wantsHeroDraw(state: GameState, player: PlayerId): boolean {
   // Safety net that outranks the whole policy: an empty Active with no hero in hand to
   // fill it is how a player loses outright, so never pass up the hero pile there.
   if (handHeroes.length === 0 && ps.actives.some(f => f === null)) return true;
+
+  // "Don't stunt the field" applies to breadth, not just height. The rules below compare
+  // the BEST hero in hand against the BEST one deployed, which is a question about how
+  // tall your board is — a deck that wants several specific bodies out at once (the
+  // Goten/Kid Trunks pair, anything keyed off a full bench) reads as "fine, stop drawing"
+  // the moment one good fighter lands. While there are still slots to fill and nothing to
+  // fill them with, take the hero.
+  if (handHeroes.length + inPlay.length < BOARD_CAPACITY) return true;
 
   const kiCosts = [...handHeroes, ...inPlay].map(c => c.kiCost);
   const top = kiCosts.length ? Math.max(...kiCosts) : 0;
