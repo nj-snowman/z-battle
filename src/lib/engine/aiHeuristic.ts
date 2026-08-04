@@ -10,6 +10,68 @@ function ghostLiability(atk: number, ownFighterCount: number): number {
   return ownFighterCount > 0 ? atk : 0;
 }
 
+// ---- Draw-phase policy -------------------------------------------------------
+//
+// A card's Ki cost is the "stars" printed on it; 6 is the ultimate hero. Items are the
+// default draw — the hero pile is only 5 cards deep after the opening hand, and a hand
+// full of heroes you have no slot for is dead weight. A hero is only worth taking when
+// the board would otherwise stop growing:
+//
+//   * the hand can't improve on what's already deployed (nothing bigger than your best
+//     fighter), so drawing items just stalls the curve; or
+//   * you hold a 6-star but nothing in the 4-5 band to bridge to it, which is a real risk
+//     — the top-end body may be several turns of Ki away with nothing to play meanwhile.
+//
+// Holding a 6-star with a healthy mid-curve means you're not desperate: take the item.
+
+const TOP_TIER_KI = 6;
+// Highest "next best" Ki cost that still counts as a hole under a 6-star. A 3 and a 6 with
+// nothing between them is the gap the rule is aimed at; a 4 or 5 bridges it fine.
+const CURVE_GAP_CEILING = 3;
+
+function wantsHeroDraw(state: GameState, player: PlayerId): boolean {
+  const ps = state.players[player];
+  const handHeroes = ps.hand.map(getCard).filter(c => c.cardType === 'hero');
+  const inPlay = [...ps.actives, ...ps.bench]
+    .filter((f): f is NonNullable<typeof f> => f !== null)
+    .map(f => getCard(f.cardId));
+
+  // Safety net that outranks the whole policy: an empty Active with no hero in hand to
+  // fill it is how a player loses outright, so never pass up the hero pile there.
+  if (handHeroes.length === 0 && ps.actives.some(f => f === null)) return true;
+
+  const kiCosts = [...handHeroes, ...inPlay].map(c => c.kiCost);
+  const top = kiCosts.length ? Math.max(...kiCosts) : 0;
+
+  if (top >= TOP_TIER_KI) {
+    // Already have the ceiling covered — only reach for another hero to patch a hole
+    // underneath it.
+    const below = kiCosts.filter(k => k < TOP_TIER_KI);
+    const nextBelow = below.length ? Math.max(...below) : 0;
+    return nextBelow <= CURVE_GAP_CEILING;
+  }
+
+  const bestInHand = handHeroes.length ? Math.max(...handHeroes.map(c => c.kiCost)) : 0;
+  const bestInPlay = inPlay.length ? Math.max(...inPlay.map(c => c.kiCost)) : 0;
+  // Nothing in hand outclasses what's already on the field — the board has stopped
+  // growing, so go looking for a bigger body.
+  return bestInHand <= bestInPlay;
+}
+
+/**
+ * Which pile to draw from, shared by every difficulty so the policy can't drift between
+ * the heuristic and the search AI. Returns null when neither pile has cards.
+ */
+export function chooseDrawPile(state: GameState, player: PlayerId): Intent | null {
+  const ps = state.players[player];
+  const heroLeft = ps.piles.hero.length > 0;
+  const itemLeft = ps.piles.item.length > 0;
+  if (!heroLeft && !itemLeft) return null;
+  if (!heroLeft) return { type: 'draw', pile: 'item' };
+  if (!itemLeft) return { type: 'draw', pile: 'hero' };
+  return { type: 'draw', pile: wantsHeroDraw(state, player) ? 'hero' : 'item' };
+}
+
 export function chooseMoveHeuristic(state: GameState, player: PlayerId): Intent | null {
   // Resolve any pending promotion for this player before anything else
   if (state.pendingPromotions.length > 0 && state.pendingPromotions[0].side === player) {
@@ -55,28 +117,8 @@ export function chooseMoveHeuristic(state: GameState, player: PlayerId): Intent 
 
   switch (state.phase) {
     case 'draw': {
-      const heroesInHand = ps.hand.filter(id => getCard(id).cardType === 'hero').length;
-      const emptyActives = ps.actives.filter(f => f === null).length;
-
-      // No heroes in hand and active slot is empty — must draw a hero
-      if (emptyActives > 0 && heroesInHand === 0) {
-        const m = moves.find(m => m.type === 'draw' && m.pile === 'hero');
-        if (m) return m;
-      }
-
-      // Active slots are all filled — prefer item over more heroes
-      if (emptyActives === 0) {
-        for (const pile of ['item', 'hero'] as const) {
-          const m = moves.find(m => m.type === 'draw' && m.pile === pile);
-          if (m) return m;
-        }
-      }
-
-      // Default: draw hero to keep board filled
-      for (const pile of ['hero', 'item'] as const) {
-        const m = moves.find(m => m.type === 'draw' && m.pile === pile);
-        if (m) return m;
-      }
+      const draw = chooseDrawPile(state, player);
+      if (draw) return draw;
       break;
     }
 

@@ -244,7 +244,10 @@ export default function SetupScreen({ onStart, userEmail, isGuest = false, onOpe
   }
 
   function resolveFirstPlayer(choice: FirstPlayerChoice): PlayerId {
-    if (choice === 'random') return Math.random() < 0.5 ? 'p1' : 'p2';
+    // Against the AI the coin toss isn't offered, so it's always random — picking your own
+    // first turn there is just a free advantage against an opponent who can't object.
+    // Hotseat keeps the choice, since both seats are human and can agree between them.
+    if (gameMode === 'vs_ai' || choice === 'random') return Math.random() < 0.5 ? 'p1' : 'p2';
     return choice;
   }
 
@@ -744,7 +747,8 @@ export default function SetupScreen({ onStart, userEmail, isGuest = false, onOpe
         />
       </div>
 
-      {/* First player */}
+      {/* First player — hotseat only; vs AI it's always a coin toss (see resolveFirstPlayer) */}
+      {gameMode !== 'vs_ai' && (
       <div style={{
         background: 'var(--panel)',
         border: '1px solid var(--line)',
@@ -766,7 +770,8 @@ export default function SetupScreen({ onStart, userEmail, isGuest = false, onOpe
         </span>
         <div style={{ display: 'flex', gap: 8 }}>
           {(['random', 'p1', 'p2'] as FirstPlayerChoice[]).map((pid) => {
-            const label = pid === 'random' ? 'RANDOM' : pid === 'p1' ? 'PLAYER 1' : (gameMode === 'vs_ai' ? 'AI' : 'PLAYER 2');
+            // Hotseat only, so the second seat is always another human.
+            const label = pid === 'random' ? 'RANDOM' : pid === 'p1' ? 'PLAYER 1' : 'PLAYER 2';
             const isSelected = firstPlayer === pid;
             return (
               <button
@@ -798,6 +803,7 @@ export default function SetupScreen({ onStart, userEmail, isGuest = false, onOpe
           })}
         </div>
       </div>
+      )}
 
       {/* AI difficulty */}
       {gameMode === 'vs_ai' && (
