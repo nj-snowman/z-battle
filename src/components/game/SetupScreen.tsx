@@ -235,12 +235,15 @@ export default function SetupScreen({ onStart, userEmail, isGuest = false, onOpe
   const [showRulebook, setShowRulebook] = useState(false);
   const [pendingGame, setPendingGame] = useState<PendingGame | null>(null);
 
-  function resolveP2Deck(base: string | null): string {
-    if (!base || base === 'random') {
-      const pool = DECK_IDS.filter(d => d !== p1Deck);
-      return pool[Math.floor(Math.random() * pool.length)] ?? DECK_IDS[0];
-    }
-    return base;
+  /** A random deck, optionally avoiding one already spoken for (so "random" never mirrors). */
+  function pickRandomDeck(exclude?: string): string {
+    const pool = DECK_IDS.filter(d => d !== exclude);
+    return pool[Math.floor(Math.random() * pool.length)] ?? DECK_IDS[0];
+  }
+
+  function resolveDeck(choice: string | null, exclude?: string): string {
+    if (!choice || choice === 'random') return pickRandomDeck(exclude);
+    return choice;
   }
 
   function resolveFirstPlayer(choice: FirstPlayerChoice): PlayerId {
@@ -253,9 +256,12 @@ export default function SetupScreen({ onStart, userEmail, isGuest = false, onOpe
 
   function handleStart() {
     if (!p1Deck || !p2Deck) return;
-    const resolvedDeck = resolveP2Deck(p2Deck);
+    // Roll the player's own deck first, so the opponent's "random" can avoid landing on
+    // the same one — otherwise random-vs-random could quietly become a mirror match.
+    const resolvedP1 = resolveDeck(p1Deck);
+    const resolvedP2 = resolveDeck(p2Deck, resolvedP1);
     const resolvedFirst = resolveFirstPlayer(firstPlayer);
-    const game: PendingGame = { p1Deck, p2Deck: resolvedDeck, firstPlayer: resolvedFirst, mode: gameMode, difficulty };
+    const game: PendingGame = { p1Deck: resolvedP1, p2Deck: resolvedP2, firstPlayer: resolvedFirst, mode: gameMode, difficulty };
     setPendingGame(game);
     setScreen('loading');
   }
@@ -400,7 +406,14 @@ export default function SetupScreen({ onStart, userEmail, isGuest = false, onOpe
 
           {/* HOTSEAT */}
           <button
-            onClick={() => { setGameMode('hotseat'); setP2Deck(null); setScreen('setup'); }}
+            // Hotseat offers no Random option, so drop a "random" carried over from a
+            // vs-AI visit rather than leaving an invisible selection that still resolves.
+            onClick={() => {
+              setGameMode('hotseat');
+              setP2Deck(null);
+              setP1Deck(prev => (prev === 'random' ? null : prev));
+              setScreen('setup');
+            }}
             style={{
               background: 'rgba(58,166,255,0.07)',
               border: '1.5px solid rgba(58,166,255,0.22)',
@@ -738,7 +751,12 @@ export default function SetupScreen({ onStart, userEmail, isGuest = false, onOpe
 
       {/* Deck pickers */}
       <div style={{ display: 'flex', gap: 12 }}>
-        <DeckPicker label="Player 1" selected={p1Deck} onSelect={setP1Deck} />
+        <DeckPicker
+          label="Player 1"
+          selected={p1Deck}
+          onSelect={setP1Deck}
+          showRandom={gameMode === 'vs_ai'}
+        />
         <DeckPicker
           label={p2Label}
           selected={p2Deck}
